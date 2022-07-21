@@ -797,7 +797,8 @@ module Steep
             FallbackAny => :information,
             ElseOnExhaustiveCase => :warning,
             UnknownConstant => :warning,
-            MethodDefinitionMissing => :information
+            MethodDefinitionMissing => :information,
+            UnknownInstanceVariable => :warning
           }
         ).freeze
       end
@@ -805,12 +806,12 @@ module Steep
       def self.strict
         @strict ||= all_error.merge(
           {
-            NoMethod => nil,
-            ImplicitBreakValueMismatch => nil,
-            FallbackAny => nil,
-            ElseOnExhaustiveCase => nil,
-            UnknownConstant => nil,
-            MethodDefinitionMissing => nil
+            ImplicitBreakValueMismatch => :warning,
+            FallbackAny => :warning,
+            ElseOnExhaustiveCase => :warning,
+            UnknownConstant => :warning,
+            MethodDefinitionMissing => :information,
+            UnknownInstanceVariable => :warning
           }
         ).freeze
       end
@@ -824,7 +825,8 @@ module Steep
             ElseOnExhaustiveCase => nil,
             UnknownConstant => nil,
             MethodDefinitionMissing => nil,
-            UnexpectedJump => nil
+            UnexpectedJump => nil,
+            UnknownInstanceVariable => nil
           }
         ).freeze
       end
