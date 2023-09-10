@@ -52,6 +52,13 @@ module Steep
           def initialize: (?location: untyped?) -> void
         end
 
+        class Guard < Base
+          attr_reader truthy_type: AST::Types::t?
+          attr_reader falsy_type: AST::Types::t?
+
+          def initialize: (truthy_type: AST::Types::t?, falsy_type: AST::Types::t?, ?location: untyped?) -> void
+        end
+
         # A type with truthy/falsy type environment.
         class Env < Base
           attr_reader truthy: TypeInference::TypeEnv

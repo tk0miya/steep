@@ -68,6 +68,24 @@ module Steep
           end
         end
 
+        class Guard < Base
+          attr_reader :truthy_type, :falsy_type
+
+          def initialize(truthy_type:, falsy_type:, location: nil)
+            @truthy_type = truthy_type
+            @falsy_type = falsy_type
+            @location = location
+          end
+
+          def ==(other)
+            super && other.truthy_type == truthy_type && other.falsy_type == falsy_type
+          end
+
+          def hash
+            self.class.hash ^ truthy_type.hash ^ falsy_type.hash
+          end
+        end
+
         class Env < Base
           attr_reader :truthy, :falsy, :type
 

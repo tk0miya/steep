@@ -348,6 +348,7 @@ module Steep
                   method_name = method_name_for(type_def, name)
                   decl = TypeInference::MethodCall::MethodDecl.new(method_name: method_name, method_def: type_def)
                   method_type = factory.method_type(type_def.type, method_decls: Set[decl])
+                  method_type = replace_guard_method(definition, type_def, method_type)
                   replace_primitive_method(method_name, type_def, method_type)
                 end
               )
@@ -770,6 +771,23 @@ module Steep
         end
 
         method_type
+      end
+
+      def replace_guard_method(receiver, method_def, method_type)
+        type_guard = method_def.annotations.find { |annotation| annotation.string.start_with? "guard:" }
+        if type_guard
+          truthy_type_name, falsy_type_name = type_guard.string.sub(/^guard:/, "").split(/,/)
+          truthy_type = RBS::Parser.parse_type(truthy_type_name || "bot")&.yield_self { |type| factory.type(type) }
+          falsy_type = RBS::Parser.parse_type(falsy_type_name || "bot")&.yield_self { |type| factory.type(type) }
+
+          return method_type.with(
+            type: method_type.type.with(
+              return_type: AST::Types::Logic::Guard.new(truthy_type: truthy_type, falsy_type: falsy_type, location: method_type.type.return_type.location)
+            )
+          )
+        else
+          method_type
+        end
       end
     end
   end

@@ -164,6 +164,23 @@ module Steep
             if (truthy_result, falsy_result = evaluate_method_call(env: env, type: type, receiver: receiver, arguments: arguments))
               return [truthy_result, falsy_result]
             end
+          when AST::Types::Union
+            if type.types.all? {|type| type.is_a?(AST::Types::Logic::Guard) }
+              receiver, *_ = node.children
+              truthy_type, falsy_type = factory.partition_union(type)
+
+              truthy_env, falsy_env = refine_node_type(
+                env: env,
+                node: receiver,
+                truthy_type: truthy_type || BOT,
+                falsy_type: falsy_type || BOT
+              )
+
+              return [
+                Result.new(type: truthy_type || BOT, env: truthy_env, unreachable: truthy_type.nil?),
+                Result.new(type: falsy_type || BOT, env: falsy_env, unreachable: falsy_type.nil?)
+              ]
+            end
           else
             if env[node]
               truthy_type, falsy_type = factory.partition_union(type)
@@ -374,6 +391,28 @@ module Steep
               falsy_result.update_type { TRUE },
               truthy_result.update_type { FALSE }
             ]
+          end
+        when AST::Types::Logic::Guard
+          if receiver
+            receiver_type = typing.type_of(node: receiver)
+            unwrap = factory.unwrap_optional(receiver_type)
+            truthy_receiver = type.truthy_type
+            falsy_receiver = type.falsy_type
+
+            truthy_env, falsy_env = refine_node_type(
+              env: env,
+              node: receiver,
+              truthy_type: truthy_receiver || BOT,
+              falsy_type: falsy_receiver || BOT
+            )
+
+            truthy_result = Result.new(type: TRUE, env: truthy_env, unreachable: false)
+            truthy_result.unreachable! if no_subtyping?(sub_type: AST::Builtin.nil_type, super_type: receiver_type)
+
+            falsy_result = Result.new(type: FALSE, env: falsy_env, unreachable: false)
+            falsy_result.unreachable! unless unwrap
+
+            [truthy_result, falsy_result]
           end
         end
       end

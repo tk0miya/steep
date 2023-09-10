@@ -160,6 +160,8 @@ module Steep
 
       def replace_primitive_method: (method_name, RBS::Definition::Method::TypeDef, MethodType) -> MethodType
 
+      def replace_guard_method: (RBS::Definition, RBS::Definition::Method::TypeDef, MethodType) -> MethodType
+
       def method_name_for: (RBS::Definition::Method::TypeDef, Symbol name) -> method_name
     end
   end

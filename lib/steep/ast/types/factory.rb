@@ -372,6 +372,8 @@ module Steep
               truthy_types.empty? ? nil : AST::Types::Union.build(types: truthy_types),
               falsy_types.empty? ? nil : AST::Types::Union.build(types: falsy_types)
             ]
+          when AST::Types::Logic::Guard
+            [type.truthy_type, type.falsy_type]
           when AST::Types::Any, AST::Types::Boolean, AST::Types::Top, AST::Types::Logic::Base
             [type, type]
           when AST::Types::Nil
