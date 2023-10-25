@@ -3012,6 +3012,75 @@ EOF
     end
   end
 
+  def test_unreachable_if_void
+    with_checker do |checker|
+      source = parse_ruby(<<EOF)
+# @type var x: void
+x = (_ = nil)
+
+puts if x
+puts if x && true
+puts if x || true
+EOF
+
+      with_standard_construction(checker, source) do |construction, typing|
+        construction.synthesize(source.node)
+
+        assert_typing_error(typing, size: 3)
+
+        typing.errors.find {|error| error.node == dig(source.node, 1, 1) }.tap do |error|
+          assert_instance_of Diagnostic::Ruby::UnreachableBranch, error
+        end
+
+        typing.errors.find {|error| error.node == dig(source.node, 2, 1) }.tap do |error|
+          assert_instance_of Diagnostic::Ruby::UnreachableBranch, error
+        end
+
+        typing.errors.find {|error| error.node == dig(source.node, 3, 1) }.tap do |error|
+          assert_instance_of Diagnostic::Ruby::UnreachableBranch, error
+        end
+      end
+    end
+  end
+
+  def test_unreachable_if_bot
+    with_checker(<<RBS) do |checker|
+class A
+  def raise: () -> bot
+end
+RBS
+      source = parse_ruby(<<EOF)
+puts if A.new.raise
+puts if A.new.raise && true
+puts if A.new.raise || true
+puts if true && A.new.raise
+puts if true || A.new.raise  # not error
+EOF
+
+      with_standard_construction(checker, source) do |construction, typing|
+        construction.synthesize(source.node)
+
+        assert_typing_error(typing, size: 4)
+
+        typing.errors.find {|error| error.node == dig(source.node, 0, 1) }.tap do |error|
+          assert_instance_of Diagnostic::Ruby::UnreachableBranch, error
+        end
+
+        typing.errors.find {|error| error.node == dig(source.node, 1, 1) }.tap do |error|
+          assert_instance_of Diagnostic::Ruby::UnreachableBranch, error
+        end
+
+        typing.errors.find {|error| error.node == dig(source.node, 2, 1) }.tap do |error|
+          assert_instance_of Diagnostic::Ruby::UnreachableBranch, error
+        end
+
+        typing.errors.find {|error| error.node == dig(source.node, 3, 1) }.tap do |error|
+          assert_instance_of Diagnostic::Ruby::UnreachableBranch, error
+        end
+      end
+    end
+  end
+
   def test_if_annotation_error
     with_checker do |checker|
       source = parse_ruby(<<EOF)
