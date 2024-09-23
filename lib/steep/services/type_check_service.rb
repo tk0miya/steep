@@ -317,10 +317,66 @@ module Steep
 
             if subtyping
               text = source_files[path].content
+              if path.extname == ".erb"
+                text = filter_code(path, text)
+                text.split("\n").each do |line|
+                  Steep.logger.info(line.inspect)
+                end
+              end
               file = type_check_file(target: target, subtyping: subtyping, path: path, text: text) { signature_service.latest_constant_resolver }
               yield [file.path, file.diagnostics]
               source_files[path] = file
             end
+          end
+        end
+      end
+
+      def filter_code(path, text)
+        require 'parser'
+        require 'better_html'
+        require 'better_html/parser'
+
+        buffer = Parser::Source::Buffer.new(path.to_s, source: text)
+        parser = BetterHtml::Parser.new(buffer, template_language: :html)
+        traverse(parser.ast).map { |node| whiten(node, buffer) }.join
+      end
+
+      def whiten(node, buffer)
+        case node
+        when String
+          node.gsub(/\S/, ' ')
+        when AST::Node, BetterHtml::AST::Node
+          case node.type
+          when :erb
+            prefix, _, code, = node.children
+            case prefix&.children&.first
+            when '#'
+              "#  #{code.children.first}  "
+            when '='
+              "   #{code.children.first}  "
+            else
+              "  #{code.children.first}  "
+            end
+          when :tag
+            text = buffer.source[node.location.to_range]
+            # ' ' * text.bytesize
+            text.gsub(/\S/, ' ')
+          else
+            Steep.logger.info("unknown node detected: #{node}")
+            raise
+          end
+        end
+      end
+
+      def traverse(node, &block)
+        return to_enum(__method__, node) unless block
+        return if node.nil?
+
+        if node.is_a?(String) || node.type == :tag || node.type == :erb
+          yield(node)
+        else
+          node.children.each do |child|
+            traverse(child, &block)
           end
         end
       end

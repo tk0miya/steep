@@ -5,13 +5,14 @@ class PatternTest < Minitest::Test
 
   def test_pattern
     pattern = Project::Pattern.new(
-      patterns: ["app/models", "app/controllers/**/*.rb"],
+      patterns: ["app/models", "app/controllers/**/*.rb", "app/views/**/*.erb"],
       ext: ".rb"
     )
 
     assert_operator pattern, :=~, "app/models/account.rb"
     assert_operator pattern, :=~, "app/controllers/admin_controller.rb"
     assert_operator pattern, :=~, "app/controllers/api/v2/accounts_controller.rb"
+    assert_operator pattern, :=~, "app/views/accounts/show.erb"
   end
 
   def test_pattern_with_glob
