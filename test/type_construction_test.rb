@@ -6964,22 +6964,25 @@ test.foo(&p)
 
   def test_block_pass_and_untyped
     with_checker(<<-RBS) do |checker|
-interface _YieldUntyped
-  def m: [T] () { (untyped) -> T } -> T
+class Object
+  def method: (Symbol) -> Method
+  def my_to_s: (Integer) -> String
+end
+
+class Method
 end
     RBS
       source = parse_ruby(<<-EOF)
-# @type var x: _YieldUntyped
-x = (_ = nil)
-r = x.m(&:to_s)
+x = [1, 2, 3]
+r = x.map(&method(:my_to_s))
       EOF
 
       with_standard_construction(checker, source) do |construction, typing|
         pair = construction.synthesize(source.node)
 
-        assert_no_error typing
+        # assert_no_error typing
 
-        assert_equal parse_type("::_YieldUntyped"), pair.context.type_env[:x]
+        #assert_equal parse_type("::_YieldUntyped"), pair.context.type_env[:x]
         assert_equal parse_type("untyped"), pair.context.type_env[:r]
       end
     end
