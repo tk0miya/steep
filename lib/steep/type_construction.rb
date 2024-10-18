@@ -2405,7 +2405,7 @@ module Steep
                 if hint.one_arg?
                   if hint.type.params
                     # Assumes Symbol#to_proc implementation
-                    param_type = hint.type.params.required[0]
+                    param_type = hint.type.params.required.fetch(0)
                     case param_type
                     when AST::Types::Any
                       type = AST::Types::Any.instance
@@ -2423,7 +2423,7 @@ module Steep
                               params: Interface::Function::Params.empty.with_first_param(
                                 Interface::Function::Params::PositionalParams::Required.new(param_type)
                               ),
-                              return_type: return_types[0],
+                              return_type: return_types.fetch(0),
                               location: nil
                             ),
                             block: nil,
@@ -3485,7 +3485,7 @@ module Steep
           return_type = method_type.type.return_type
           if AST::Builtin::Array.instance_type?(return_type)
             # @type var return_type: AST::Types::Name::Instance
-            elem = return_type.args[0]
+            elem = return_type.args.fetch(0)
             type = AST::Builtin::Array.instance_type(unwrap(elem))
 
             _, constr = add_typing(node, type: type)
@@ -3508,8 +3508,8 @@ module Steep
           return_type = method_type.type.return_type
           if AST::Builtin::Hash.instance_type?(return_type)
             # @type var return_type: AST::Types::Name::Instance
-            key = return_type.args[0]
-            value = return_type.args[1]
+            key = return_type.args.fetch(0)
+            value = return_type.args.fetch(1)
             type = AST::Builtin::Hash.instance_type(key, unwrap(value))
 
             _, constr = add_typing(node, type: type)
@@ -3609,7 +3609,7 @@ module Steep
       end
 
       if fails.one?
-        call, constr = fails[0]
+        call, constr = fails.fetch(0)
 
         constr.typing.save!
 
@@ -3824,7 +3824,7 @@ module Steep
           args_ = []
 
           type_args.each_with_index do |type, index|
-            param = method_type.type_params[index]
+            param = method_type.type_params.fetch(index)
 
             if upper_bound = param.upper_bound
               if result = no_subtyping?(sub_type: type.value, super_type: upper_bound)
@@ -4903,7 +4903,7 @@ module Steep
           case
           when AST::Builtin::Array.instance_type?(type)
             type.is_a?(AST::Types::Name::Instance) or raise
-            element_types << type.args[0]
+            element_types << type.args.fetch(0)
           when type.is_a?(AST::Types::Tuple)
             element_types.push(*type.types)
           else
@@ -5024,8 +5024,8 @@ module Steep
               constr.synthesize(elem_, hint: hint_hash).tap do |(type, _)|
                 if AST::Builtin::Hash.instance_type?(type)
                   # @type var type: AST::Types::Name::Instance
-                  key_types << type.args[0]
-                  value_types << type.args[1]
+                  key_types << type.args.fetch(0)
+                  value_types << type.args.fetch(1)
                 end
               end
             end
