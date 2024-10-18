@@ -3479,7 +3479,7 @@ module Steep
       decls = method_overload.method_decls(method_name).to_set
 
       case
-      when decl = decls.find {|decl| SPECIAL_METHOD_NAMES[:array_compact].include?(decl.method_name) }
+      when decl = decls.find {|decl| SPECIAL_METHOD_NAMES.fetch(:array_compact).include?(decl.method_name) }
         if arguments.empty? && !block_params
           # compact
           return_type = method_type.type.return_type
@@ -3502,7 +3502,7 @@ module Steep
             return [call, constr]
           end
         end
-      when decl = decls.find {|decl| SPECIAL_METHOD_NAMES[:hash_compact].include?(decl.method_name) }
+      when decl = decls.find {|decl| SPECIAL_METHOD_NAMES.fetch(:hash_compact).include?(decl.method_name) }
         if arguments.empty? && !block_params
           # compact
           return_type = method_type.type.return_type
@@ -3526,7 +3526,7 @@ module Steep
             return [call, constr]
           end
         end
-      when decl = decls.find {|decl| SPECIAL_METHOD_NAMES[:lambda].include?(decl.method_name) }
+      when decl = decls.find {|decl| SPECIAL_METHOD_NAMES.fetch(:lambda).include?(decl.method_name) }
         if block_params
           # @type var node: Parser::AST::Node & Parser::AST::_BlockNode
           type, constr = type_lambda(node, params_node: block_params, body_node: block_body, type_hint: hint)

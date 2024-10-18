@@ -231,7 +231,7 @@ module Steep
 
         envs.each do |env|
           all_lvar_types.each_key do |name|
-            all_lvar_types[name] << (env[name] || AST::Builtin.nil_type)
+            all_lvar_types.fetch(name) << (env[name] || AST::Builtin.nil_type)
           end
         end
 
