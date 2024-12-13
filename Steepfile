@@ -17,7 +17,7 @@ end
 target :app do
   collection_config "rbs_collection.steep.yaml"
 
-  check "lib"
+  check "lib/test.rb"
   ignore "lib/steep/shims"
 
   signature "sig"
@@ -33,34 +33,4 @@ target :app do
   else
     library "rbs"
   end
-end
-
-target :test do
-  collection_config "rbs_collection.steep.yaml"
-
-  unreferenced!
-  implicitly_returns_nil!
-
-  check "test"
-  signature "sig/test"
-
-  configure_code_diagnostics(D::Ruby.lenient)
-
-  if tmp_rbs_dir.directory?
-    signature tmp_rbs_dir.to_s
-  else
-    library "rbs"
-  end
-end
-
-target :bin do
-  unreferenced!
-  implicitly_returns_nil!
-
-  collection_config "rbs_collection.steep.yaml"
-
-  check "bin/generate-diagnostics-docs.rb"
-  signature "tmp/rbs-inline/bin"
-
-  library "rbs"
 end

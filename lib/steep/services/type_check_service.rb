@@ -9,7 +9,6 @@ module Steep
       class SourceFile
         attr_reader :path
         attr_reader :target
-        attr_reader :content
         attr_reader :node
         attr_reader :typing
         attr_reader :errors
@@ -24,16 +23,21 @@ module Steep
           @errors = errors
         end
 
-        def self.with_syntax_error(path:, content:, error:)
-          new(path: path, node: false, content: content, errors: [error], typing: nil, ignores: nil)
-        end
-
-        def self.with_typing(path:, content:, typing:, node:, ignores:)
-          new(path: path, node: node, content: content, errors: nil, typing: typing, ignores: ignores)
-        end
-
         def self.no_data(path:, content:)
           new(path: path, content: content, node: false, errors: nil, typing: nil, ignores: nil)
+        end
+
+        def content
+          # This method might be separated to plugins.
+          if path.extname == '.erb' && @content
+            @converted ||= ErbExtractor.new.extract(path:, text: @content)
+          else
+            @content
+          end
+        end
+
+        def original_content
+          @content
         end
 
         def update_content(content)
@@ -45,6 +49,14 @@ module Steep
             typing: typing,
             ignores: ignores
           )
+        end
+
+        def with_syntax_error(error:)
+          self.class.new(path: path, node: false, content: @content, errors: [error], typing: nil, ignores: nil)
+        end
+
+        def with_typing(typing:, node:, ignores:)
+          self.class.new(path: path, node: node, content: @content, errors: nil, typing: typing, ignores: ignores)
         end
 
         def diagnostics
@@ -235,10 +247,9 @@ module Steep
             subtyping = signature_service.current_subtyping
 
             if subtyping
-              text = source_files.fetch(path).content
-              file = type_check_file(target: target, subtyping: subtyping, path: path, text: text) { signature_service.latest_constant_resolver }
+              file = source_files.fetch(path)
+              file = type_check_file(target: target, subtyping: subtyping, path: path, file: file) { signature_service.latest_constant_resolver }
               source_files[path] = file
-
               file.diagnostics
             end
           end
@@ -273,36 +284,45 @@ module Steep
         changes.each do |path, changes|
           if source_file?(path)
             file = source_files[path] || SourceFile.no_data(path: path, content: "")
-            content = changes.inject(file.content) {|text, change| change.apply_to(text) }
+            content = changes.inject(file.original_content) {|text, change| change.apply_to(text) }
             source_files[path] = file.update_content(content)
+            Steep.logger.info { "updated content: #{content.inspect} "}
           end
         end
       end
 
-      def type_check_file(target:, subtyping:, path:, text:)
+      def type_check_file(target:, subtyping:, path:, file:)
         Steep.logger.tagged "#type_check_file(#{path}@#{target.name})" do
-          source = Source.parse(text, path: path, factory: subtyping.factory)
+          Steep.logger.info { "checking content: #{file.content.inspect} "}
+          source = Source.parse(file.content, path: path, factory: subtyping.factory)
           typing = TypeCheckService.type_check(source: source, subtyping: subtyping, constant_resolver: yield, cursor: nil)
           ignores = Source::IgnoreRanges.new(ignores: source.ignores)
-          SourceFile.with_typing(path: path, content: text, node: source.node, typing: typing, ignores: ignores)
+          file.with_typing(node: source.node, typing: typing, ignores: ignores)
         end
       rescue AnnotationParser::SyntaxError => exn
         error = Diagnostic::Ruby::AnnotationSyntaxError.new(message: exn.message, location: exn.location)
-        SourceFile.with_syntax_error(path: path, content: text, error: error)
+        file.with_syntax_error(error: error)
       rescue ::Parser::SyntaxError => exn
         error = Diagnostic::Ruby::SyntaxError.new(message: exn.message, location: (_ = exn).diagnostic.location)
-        SourceFile.with_syntax_error(path: path, content: text, error: error)
+        file.with_syntax_error(error: error)
       rescue EncodingError => exn
         SourceFile.no_data(path: path, content: "")
       rescue RuntimeError => exn
         Steep.log_error(exn)
-        SourceFile.no_data(path: path, content: text)
+        SourceFile.no_data(path: path, content: file.original_content)
       end
 
       def self.type_check(source:, subtyping:, constant_resolver:, cursor:)
         annotations = source.annotations(block: source.node, factory: subtyping.factory, context: nil)
 
-        definition = subtyping.factory.definition_builder.build_instance(AST::Builtin::Object.module_name)
+        case annotations.self_type
+        when AST::Types::Name::Instance
+          self_type = AST::Builtin::Type.new(annotations.self_type.name.to_s)
+        else
+          self_type = AST::Builtin::Object
+        end
+
+        definition = subtyping.factory.definition_builder.build_instance(self_type.module_name)
 
         const_env = TypeInference::ConstantEnv.new(
           factory: subtyping.factory,
@@ -321,17 +341,17 @@ module Steep
         context = TypeInference::Context.new(
           block_context: nil,
           module_context: TypeInference::Context::ModuleContext.new(
-            instance_type: AST::Builtin::Object.instance_type,
-            module_type: AST::Builtin::Object.module_type,
+            instance_type: self_type.instance_type,
+            module_type: self_type.module_type,
             implement_name: nil,
             nesting: nil,
-            class_name: AST::Builtin::Object.module_name,
-            instance_definition: subtyping.factory.definition_builder.build_instance(AST::Builtin::Object.module_name),
-            module_definition: subtyping.factory.definition_builder.build_singleton(AST::Builtin::Object.module_name)
+            class_name: self_type.module_name,
+            instance_definition: subtyping.factory.definition_builder.build_instance(self_type.module_name),
+            module_definition: subtyping.factory.definition_builder.build_singleton(self_type.module_name)
           ),
           method_context: nil,
           break_context: nil,
-          self_type: AST::Builtin::Object.instance_type,
+          self_type: self_type.instance_type,
           type_env: type_env,
           call_context: TypeInference::MethodCall::TopLevelContext.new,
           variable_context: TypeInference::Context::TypeVariableContext.empty
@@ -373,6 +393,64 @@ module Steep
 
       def lib_signature_file?(path)
         signature_services.each_value.any? {|sig| sig.env_rbs_paths.include?(path) }
+      end
+    end
+  end
+end
+
+class ErbExtractor
+  def extract(path:, text:) #: String
+    require 'parser'
+    require 'better_html'
+    require 'better_html/parser'
+
+    buffer = Parser::Source::Buffer.new(path.to_s, source: text)
+    parser = BetterHtml::Parser.new(buffer, template_language: :html)
+    traverse(parser.ast).map { |node| whiten(node:, buffer:) }.join
+  end
+
+  #: (untyped?) -> Enumerator[String | untyped]
+  #: (untyped?) { (String | untyped) -> void } -> void
+  def traverse(node, &block)
+    return to_enum(__method__, node) unless block
+    return if node.nil?
+
+    if node.is_a?(String) || node.type == :tag || node.type == :erb
+      # @type node: String | untyped
+      yield node
+    else
+      node.children.each do |child|
+        traverse(child, &block)
+      end
+    end
+  end
+
+  # @rbs node: String | untyped
+  # @rbs buffer: untyped
+  def whiten(node:, buffer:) #: String  # rubocop:disable Metrics/CyclomaticComplexity, Metrics/MethodLength
+    case node
+    when String
+      node.gsub(/\S/, ' ')
+    when AST::Node, BetterHtml::AST::Node
+      case node.type
+      when :erb
+        prefix, _, code, = node.children
+        case prefix&.children&.first
+        when '#'
+          "#  #{code.children.first}  "
+        when '='
+          "   #{code.children.first} ;"
+        when '=='
+          "    #{code.children.first} ;"
+        else
+          "  #{code.children.first} ;"
+        end
+      when :tag
+        text = buffer.source[node.location.to_range]
+        text.gsub(/\S/, ' ')
+      else
+        Steep.logger.info("Unknown erb node type: #{node}")
+        raise
       end
     end
   end

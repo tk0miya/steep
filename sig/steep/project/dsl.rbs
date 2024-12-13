@@ -51,6 +51,8 @@ module Steep
       end
 
       module WithPattern
+        @ext: String?
+
         attr_reader sources: Array[String]
 
         attr_reader signatures: Array[String]
@@ -60,6 +62,8 @@ module Steep
         attr_reader ignored_signatures: Array[String]
 
         def check: (*String args) -> void
+
+        def ext: (String) -> void
 
         def ignore: (*String args) -> void
 
