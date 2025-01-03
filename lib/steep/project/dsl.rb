@@ -78,6 +78,10 @@ module Steep
           end
         end
 
+        def ext(ext)
+          @ext = ext
+        end
+
         def ignore(*args, inline: false)
           if inline
             ignored_inline_sources.concat(args)
@@ -119,7 +123,7 @@ module Steep
         end
 
         def source_pattern
-          Pattern.new(patterns: sources, ignores: ignored_sources, ext: ".rb")
+          Pattern.new(patterns: sources, ignores: ignored_sources, ext: @ext || ".rb")
         end
 
         def signature_pattern
