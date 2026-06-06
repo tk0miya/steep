@@ -80,7 +80,19 @@ module Steep
       end
 
       def service
-        @service ||= Services::TypeCheckService.new(project: project)
+        @service ||= Services::TypeCheckService.new(project: project, cache: type_check_cache)
+      end
+
+      # The on-disk cache, anchored at <project>/.steep_cache/. Disabled by
+      # setting STEEP_DISABLE_CACHE=1 (mainly for debugging).
+      def type_check_cache
+        return @type_check_cache if defined?(@type_check_cache)
+        @type_check_cache =
+          if ENV["STEEP_DISABLE_CACHE"]
+            nil
+          else
+            Services::TypeCheckCache.new(cache_dir: project.base_dir + ".steep_cache")
+          end
       end
 
       def handle_request(request)
@@ -232,21 +244,24 @@ module Steep
         when StartTypeCheckJob
           Steep.logger.info { "Processing StartTypeCheckJob for guid=#{job.guid}" }
           service.update(changes: job.changes)
+          # Persist env snapshot for next run. Only one worker writes (the data
+          # is identical across workers) so we don't burn N times the disk IO.
+          if assignment.index == 0 && type_check_cache
+            Steep.measure "writing env cache" do
+              service.write_env_cache_for_all_targets
+              type_check_cache.write_meta
+            end
+          end
 
         when ValidateAppSignatureJob
           if job.guid == current_type_check_guid
             Steep.logger.info { "Processing ValidateAppSignature for guid=#{job.guid}, path=#{job.path}" }
 
             formatter = Diagnostic::LSPFormatter.new({}, **{})
+            relative_path = project.relative_path(job.path)
 
-            diagnostics = service.validate_signature(path: project.relative_path(job.path), target: job.target)
-
-            typecheck_progress(
-              path: job.path,
-              guid: job.guid,
-              target: job.target,
-              diagnostics: diagnostics.filter_map { formatter.format(_1) }
-            )
+            lsp_diagnostics = run_validate_signature_with_cache(target: job.target, path: relative_path, formatter: formatter)
+            typecheck_progress(path: job.path, guid: job.guid, target: job.target, diagnostics: lsp_diagnostics)
           end
 
         when ValidateLibrarySignatureJob
@@ -254,9 +269,9 @@ module Steep
             Steep.logger.info { "Processing ValidateLibrarySignature for guid=#{job.guid}, path=#{job.path}" }
 
             formatter = Diagnostic::LSPFormatter.new({}, **{})
-            diagnostics = service.validate_signature(path: job.path, target: job.target)
-
-            typecheck_progress(path: job.path, guid: job.guid, target: job.target, diagnostics: diagnostics.filter_map { formatter.format(_1) })
+            # Library files are referenced by absolute path; pass through unchanged.
+            lsp_diagnostics = run_validate_signature_with_cache(target: job.target, path: job.path, formatter: formatter)
+            typecheck_progress(path: job.path, guid: job.guid, target: job.target, diagnostics: lsp_diagnostics)
           end
 
         when TypeCheckCodeJob
@@ -265,8 +280,8 @@ module Steep
             group_target = project.group_for_source_path(job.path) || job.target
             formatter = Diagnostic::LSPFormatter.new(group_target.code_diagnostics_config)
             relative_path = project.relative_path(job.path)
-            diagnostics = service.typecheck_source(path: relative_path, target: job.target)
-            typecheck_progress(path: job.path, guid: job.guid, target: job.target, diagnostics: diagnostics&.filter_map { formatter.format(_1) })
+            lsp_diagnostics = run_typecheck_source_with_cache(target: job.target, path: relative_path, formatter: formatter)
+            typecheck_progress(path: job.path, guid: job.guid, target: job.target, diagnostics: lsp_diagnostics)
           end
 
         when TypeCheckInlineCodeJob
@@ -275,17 +290,23 @@ module Steep
             group_target = project.group_for_inline_source_path(job.path) || job.target
             formatter = Diagnostic::LSPFormatter.new(group_target.code_diagnostics_config)
             relative_path = project.relative_path(job.path)
-            diagnostics = service.typecheck_source(path: relative_path, target: job.target) #: Array[Diagnostic::Ruby::Base | Diagnostic::Signature::Base] | nil
-            signature_diagnostics = service.validate_signature(path: relative_path, target: job.target)
-            if diagnostics
-              diagnostics.concat(signature_diagnostics)
-            else
-              unless signature_diagnostics.empty?
-                diagnostics = signature_diagnostics
-              end
-            end
 
-            typecheck_progress(path: job.path, guid: job.guid, target: job.target, diagnostics: diagnostics&.filter_map { formatter.format(_1) })
+            # Inline check runs both type-check and signature-validation paths.
+            # We mix cache hits for whichever side has fresh data.
+            source_lsp = run_typecheck_source_with_cache(target: job.target, path: relative_path, formatter: formatter)
+            signature_lsp = run_validate_signature_with_cache(target: job.target, path: relative_path, formatter: formatter)
+
+            merged =
+              case
+              when source_lsp && signature_lsp
+                source_lsp + signature_lsp
+              when source_lsp
+                source_lsp
+              when signature_lsp && !signature_lsp.empty?
+                signature_lsp
+              end
+
+            typecheck_progress(path: job.path, guid: job.guid, target: job.target, diagnostics: merged)
           end
 
         when WorkspaceSymbolJob
@@ -312,6 +333,89 @@ module Steep
 
       def typecheck_progress(guid:, path:, target:, diagnostics:)
         writer.write(CustomMethods::TypeCheck__Progress.notification({ guid: guid, path: path.to_s, target: target.name.to_s, diagnostics: diagnostics }))
+      end
+
+      # Returns the LSP diagnostic array (possibly empty) or nil when the file
+      # can't be validated. Reuses the cache when the file's content and refs
+      # haven't moved since the previous run; otherwise runs the validator and
+      # stores the fresh result back into the cache.
+      def run_validate_signature_with_cache(target:, path:, formatter:)
+        content = signature_file_content(path)
+        if content && (cached = service.cached_signature_lsp(target: target, path: path, content: content))
+          Steep.logger.debug { "Cache hit: validate_signature #{path}" }
+          return cached
+        end
+
+        diagnostics = service.validate_signature(path: path, target: target)
+        lsp_diagnostics = diagnostics.filter_map { formatter.format(_1) }
+
+        if content
+          signature_file = service.signature_files[target.name]&.dig(path)
+          if signature_file
+            service.write_signature_cache(
+              target: target,
+              path: path,
+              content: content,
+              lsp_diagnostics: lsp_diagnostics,
+              signature_file: signature_file
+            )
+          end
+        end
+
+        lsp_diagnostics
+      end
+
+      def run_typecheck_source_with_cache(target:, path:, formatter:)
+        content = source_file_content(path)
+        if content && (cached = service.cached_source_lsp(target: target, path: path, content: content))
+          Steep.logger.debug { "Cache hit: typecheck_source #{path}" }
+          return cached
+        end
+
+        diagnostics = service.typecheck_source(path: path, target: target)
+        return nil unless diagnostics
+        lsp_diagnostics = diagnostics.filter_map { formatter.format(_1) }
+
+        if content
+          source_file = service.source_files[path]
+          if source_file && !source_file.outdated
+            service.write_source_cache(
+              target: target,
+              path: path,
+              content: content,
+              lsp_diagnostics: lsp_diagnostics,
+              source_file: source_file
+            )
+          end
+        end
+
+        lsp_diagnostics
+      end
+
+      def signature_file_content(path)
+        # `path` is either a project-relative signature path or an absolute
+        # library path. Try the in-memory state first; fall back to the
+        # filesystem so library files (not tracked in `files`) still resolve.
+        project.targets.each do |target|
+          file = service.signature_services[target.name].files[path] rescue nil
+          case file
+          when Services::SignatureService::RBSFileStatus
+            return file.content
+          end
+        end
+        abs = path.absolute? ? path : (project.base_dir + path)
+        abs.binread if abs.file?
+      rescue StandardError
+        nil
+      end
+
+      def source_file_content(path)
+        file = service.source_files[path]
+        return file.content if file
+        abs = project.absolute_path(path)
+        abs.binread if abs.file?
+      rescue StandardError
+        nil
       end
 
       def workspace_symbol_result(query)

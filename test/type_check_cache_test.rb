@@ -51,8 +51,8 @@ class TypeCheckCacheTest < Minitest::Test
         alias_targets_of: {}
       )
 
-      cache.write_env_entry(entry)
-      loaded = cache.load_env_entry(Pathname("sig/a.rbs"))
+      cache.write_env_entry(:main, entry)
+      loaded = cache.load_env_entry(:main, Pathname("sig/a.rbs"))
 
       assert_equal Pathname("sig/a.rbs"), loaded.path
       assert_equal "deadbeef", loaded.content_digest
@@ -118,12 +118,12 @@ class TypeCheckCacheTest < Minitest::Test
         direct_ancestors_of: {},
         alias_targets_of: {}
       )
-      cache.write_env_entry(entry)
+      cache.write_env_entry(:main, entry)
 
-      bogus = cache.env_dir + "bogus.bin"
+      bogus = cache.env_dir_for(:main) + "bogus.bin"
       bogus.binwrite("not a marshal stream")
 
-      collected = cache.each_env_entry.to_a
+      collected = cache.each_env_entry(:main).to_a
       assert_equal 1, collected.size
       assert_equal Set[type_a], collected.first.defined_type_names
     end
@@ -133,7 +133,7 @@ class TypeCheckCacheTest < Minitest::Test
     with_cache_dir do |cache|
       cache.write_meta
       type_a = RBS::TypeName.new(name: :A, namespace: RBS::Namespace.root)
-      cache.write_env_entry(
+      cache.write_env_entry(:main,
         TypeCheckCache::EnvEntry.new(
           path: Pathname("sig/a.rbs"),
           content_digest: "x",
@@ -156,6 +156,69 @@ class TypeCheckCacheTest < Minitest::Test
       cache.write_meta
       tempfiles = cache.cache_dir.children.select { |c| c.basename.to_s.include?(".tmp.") }
       assert_empty tempfiles
+    end
+  end
+
+  # The critical case for cache correctness: a base class disappears from one
+  # file but a subclass elsewhere is unchanged. The cached descendants graph
+  # must still flag the subclass so its stale diagnostics are not reused.
+  def test_compute_changed_names_handles_deleted_super_class
+    Dir.mktmpdir do |dir|
+      a_path = Pathname(dir) + "a.rbs"
+      b_path = Pathname(dir) + "b.rbs"
+
+      a_path.write(<<~RBS)
+        class A
+          def foo: () -> String
+        end
+      RBS
+      b_path.write(<<~RBS)
+        class B < A
+        end
+      RBS
+
+      # Build the "previous" env and capture its cache state.
+      loader = RBS::EnvironmentLoader.new
+      loader.add(path: a_path)
+      loader.add(path: b_path)
+      old_env = RBS::Environment.from_loader(loader).resolve_type_names
+      old_builder = RBS::DefinitionBuilder::AncestorBuilder.new(env: old_env)
+
+      with_cache_dir do |cache|
+        walker = TypeCheckCache::EnvWalker.new(env: old_env, ancestor_builder: old_builder)
+        walker.walk.each do |path, bucket|
+          cache.write_env_entry(
+            :main,
+            TypeCheckCache::EnvEntry.new(
+              path: path,
+              content_digest: TypeCheckCache.digest_content(path.binread),
+              defined_type_names: bucket[:defined_type_names],
+              direct_ancestors_of: bucket[:direct_ancestors_of],
+              alias_targets_of: bucket[:alias_targets_of]
+            )
+          )
+        end
+
+        # Now: A is deleted from a.rbs.
+        a_path.write("# empty\n")
+
+        new_loader = RBS::EnvironmentLoader.new
+        new_loader.add(path: a_path)
+        new_loader.add(path: b_path)
+        new_env = RBS::Environment.from_loader(new_loader).resolve_type_names
+        new_builder = RBS::DefinitionBuilder::AncestorBuilder.new(env: new_env)
+
+        changed = cache.compute_changed_names(
+          target_name: :main,
+          new_env: new_env,
+          new_ancestor_builder: new_builder
+        )
+
+        type_A = RBS::TypeName.new(name: :A, namespace: RBS::Namespace.root)
+        type_B = RBS::TypeName.new(name: :B, namespace: RBS::Namespace.root)
+        assert_includes changed, type_A, "deleted base class must be flagged"
+        assert_includes changed, type_B, "subclass must propagate through cached descendants"
+      end
     end
   end
 

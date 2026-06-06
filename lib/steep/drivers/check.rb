@@ -344,7 +344,18 @@ module Steep
         socket&.close
       end
 
+      def prepare_type_check_cache(project)
+        return if ENV["STEEP_DISABLE_CACHE"]
+        cache = Services::TypeCheckCache.new(cache_dir: project.base_dir + ".steep_cache")
+        cache.clear unless cache.meta_compatible?
+      end
+
       def with_local_server(project)
+        # Discard the on-disk cache when its serialized format is incompatible
+        # with this Steep/RBS version. Per-file invalidation handles everything
+        # else (Steepfile edits, library/Ruby upgrades).
+        prepare_type_check_cache(project)
+
         client_read, server_write = IO.pipe
         server_read, client_write = IO.pipe
 

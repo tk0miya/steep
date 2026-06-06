@@ -152,8 +152,17 @@ module Steep
         end
       end
 
-      def initialize(project:)
+      attr_reader :cache
+
+      # The cache-derived changed_names per target, computed once after the
+      # first call to #update. Lets typecheck_source / validate_signature
+      # decide cache hits without re-running the closure expansion every time.
+      attr_reader :initial_changed_names_by_target
+
+      def initialize(project:, cache: nil)
         @project = project
+        @cache = cache
+        @initial_changed_names_by_target = nil
 
         @source_files = {}
         @signature_services = project.targets.each.with_object({}) do |target, hash| #$ Hash[Symbol, SignatureService]
@@ -226,9 +235,128 @@ module Steep
           update_sources(changes: changes)
         end
 
+        # On the first update after construction, augment runtime-computed
+        # changed_names with the cache-derived set so files that became stale
+        # since last run are correctly invalidated for cache-hit checks.
+        if cache && initial_changed_names_by_target.nil?
+          @initial_changed_names_by_target = compute_initial_changed_names_from_cache
+          @initial_changed_names_by_target.each do |target_name, names|
+            signature_services.fetch(target_name).last_changed_type_names.merge(names)
+          end
+        end
+
         invalidate_outdated_source_files()
         invalidate_outdated_signature_files()
       end
+
+      # Per-target changed_names since previous run, derived from cache.
+      # Returns an empty set when the cache is not configured or has nothing for the target.
+      def initial_changed_names_for(target_name)
+        (initial_changed_names_by_target || {}).fetch(target_name, Set[])
+      end
+
+      # Returns LSP-formatted diagnostics from cache if the file's cached entry
+      # is still valid (content unchanged AND no referenced type changed since
+      # the previous run). nil signals "no usable cache".
+      def cached_signature_lsp(target:, path:, content:)
+        return nil unless cache
+        # Error states (SyntaxError/AncestorError) mean the env is broken; the
+        # set of types that "changed" since last run is ill-defined, so refuse
+        # all hits and force re-validation -- mirrors signature_validation_needed?.
+        return nil unless signature_services.fetch(target.name).status.is_a?(SignatureService::LoadedStatus)
+        entry = cache.load_signature_entry(target.name, path) or return nil
+        return nil unless entry.content_digest == TypeCheckCache.digest_content(content)
+        return nil if entry.referenced_type_names.intersect?(initial_changed_names_for(target.name))
+        entry.diagnostics
+      end
+
+      def cached_source_lsp(target:, path:, content:)
+        return nil unless cache
+        # Same env-health guard as cached_signature_lsp; type_check_needed?
+        # also force-rechecks while the subtyping checker is unavailable.
+        signature_service = signature_services.fetch(target.name)
+        return nil unless signature_service.status.is_a?(SignatureService::LoadedStatus)
+        entry = cache.load_source_entry(target.name, path) or return nil
+        return nil unless entry.content_digest == TypeCheckCache.digest_content(content)
+        # An incomplete refs set (unresolved reference) can't be trusted to
+        # intersect with changed_names; force a re-check.
+        return nil if entry.has_unresolved_references
+        return nil if entry.referenced_type_names.intersect?(initial_changed_names_for(target.name))
+        entry.diagnostics
+      end
+
+      def write_signature_cache(target:, path:, content:, lsp_diagnostics:, signature_file:)
+        return unless cache
+        cache.write_signature_entry(
+          TypeCheckCache::SignatureEntry.new(
+            path: path,
+            target_name: target.name,
+            content_digest: TypeCheckCache.digest_content(content),
+            referenced_type_names: signature_file.referenced_type_names,
+            diagnostics: lsp_diagnostics
+          )
+        )
+      end
+
+      def write_source_cache(target:, path:, content:, lsp_diagnostics:, source_file:)
+        return unless cache
+        cache.write_source_entry(
+          TypeCheckCache::SourceEntry.new(
+            path: path,
+            target_name: target.name,
+            content_digest: TypeCheckCache.digest_content(content),
+            referenced_type_names: source_file.referenced_type_names,
+            has_unresolved_references: source_file.has_unresolved_references,
+            diagnostics: lsp_diagnostics
+          )
+        )
+      end
+
+      # Walks each target's live env and persists EnvEntry snapshots. The
+      # `direct_ancestors_of` / `alias_targets_of` maps stored here let the
+      # next run reconstruct the old descendants graph used by
+      # TypeCheckCache#compute_changed_names. Idempotent: callers can invoke
+      # this from any worker without coordination.
+      def write_env_cache_for_all_targets
+        return unless cache
+        signature_services.each do |target_name, service|
+          next unless service.status.is_a?(SignatureService::LoadedStatus)
+          env = service.latest_env
+          ancestor_builder = service.latest_builder.ancestor_builder
+          walker = TypeCheckCache::EnvWalker.new(env: env, ancestor_builder: ancestor_builder)
+          walker.walk.each do |path, bucket|
+            next unless path.file?
+            digest = TypeCheckCache.digest_content(path.binread)
+            cache.write_env_entry(
+              target_name,
+              TypeCheckCache::EnvEntry.new(
+                path: path,
+                content_digest: digest,
+                defined_type_names: bucket[:defined_type_names],
+                direct_ancestors_of: bucket[:direct_ancestors_of],
+                alias_targets_of: bucket[:alias_targets_of]
+              )
+            )
+          end
+        end
+      end
+
+      private def compute_initial_changed_names_from_cache
+        result = {} #: Hash[Symbol, Set[RBS::TypeName]]
+        signature_services.each do |target_name, service|
+          next unless service.status.is_a?(SignatureService::LoadedStatus)
+          env = service.latest_env
+          ancestor_builder = service.latest_builder.ancestor_builder
+          result[target_name] = cache.compute_changed_names(
+            target_name: target_name,
+            new_env: env,
+            new_ancestor_builder: ancestor_builder
+          )
+        end
+        result
+      end
+
+      public
 
       # Marks each cached source file whose referenced types intersect this
       # update's changed names as outdated. Recorded on the file (not per job) so
