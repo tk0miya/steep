@@ -18,13 +18,8 @@ module Steep
 
         # Returns: Hash[Pathname, { defined_type_names:, direct_ancestors_of:, alias_targets_of: }]
         def walk
-          buckets = Hash.new do |h, path|
-            h[path] = {
-              defined_type_names: Set[],
-              direct_ancestors_of: {},
-              alias_targets_of: {}
-            }
-          end
+          # @type var buckets: Hash[Pathname, EnvWalker::bucket]
+          buckets = {}
 
           walk_class_decls(buckets)
           walk_interface_decls(buckets)
@@ -36,6 +31,19 @@ module Steep
 
         private
 
+        def bucket_for(buckets, path)
+          existing = buckets[path]
+          return existing if existing
+
+          direct = {} #: Hash[RBS::TypeName, Set[RBS::TypeName]]
+          targets = {} #: Hash[RBS::TypeName, Set[RBS::TypeName]]
+          buckets[path] = {
+            defined_type_names: Set[],
+            direct_ancestors_of: direct,
+            alias_targets_of: targets
+          }
+        end
+
         def walk_class_decls(buckets)
           env.class_decls.each do |type_name, entry|
             ancestors_set = collect_class_ancestors(type_name)
@@ -43,7 +51,7 @@ module Steep
             entry.each_decl do |decl|
               path = decl_path(decl)
               next unless path
-              bucket = buckets[path]
+              bucket = bucket_for(buckets, path)
               bucket[:defined_type_names] << type_name
               # Several decls of the same class may live in different files; each
               # records the (identical) direct-ancestor set so any file's removal
@@ -59,7 +67,7 @@ module Steep
             decl = entry.decl
             path = decl_path(decl)
             next unless path
-            bucket = buckets[path]
+            bucket = bucket_for(buckets, path)
             bucket[:defined_type_names] << type_name
             bucket[:direct_ancestors_of][type_name] = ancestors_set
           end
@@ -70,7 +78,7 @@ module Steep
             decl = entry.decl
             path = decl_path(decl)
             next unless path
-            bucket = buckets[path]
+            bucket = bucket_for(buckets, path)
             bucket[:defined_type_names] << type_name
             targets = Set[]
             each_type_name_in(decl.type) { |n| targets << n }
@@ -83,7 +91,7 @@ module Steep
             decl = entry.decl
             path = decl_path(decl)
             next unless path
-            bucket = buckets[path]
+            bucket = bucket_for(buckets, path)
             bucket[:defined_type_names] << type_name
             # An alias points at exactly one other name; that target is the only
             # "ancestor" relationship a change can flow through.

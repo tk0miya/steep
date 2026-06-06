@@ -159,7 +159,8 @@ module Steep
       # #update_builder would otherwise read directly from memory.
       def compute_changed_names(target_name:, new_env:, new_ancestor_builder:)
         old_entries = each_env_entry(target_name).to_a
-        old_by_path = old_entries.each_with_object({}) { |e, h| h[e.path] = e }
+        old_by_path = {} #: Hash[Pathname, EnvEntry]
+        old_entries.each { |e| old_by_path[e.path] = e }
 
         new_paths = collect_env_paths(new_env)
         new_digests = compute_new_digests(new_paths)
@@ -245,34 +246,34 @@ module Steep
       end
 
       def compute_new_digests(paths)
-        paths.each_with_object({}) do |path, h|
-          h[path] = self.class.digest_content(path.binread) if path.file?
+        result = {} #: Hash[Pathname, String]
+        paths.each do |path|
+          result[path] = self.class.digest_content(path.binread) if path.file?
         end
+        result
+      end
+
+      def decl_path_matches?(decl, path)
+        loc = decl.location or return false
+        buffer = loc.buffer or return false
+        Pathname(buffer.name) == path
       end
 
       def collect_defined_type_names_in_path(env, path)
-        set = Set[]
+        set = Set[] #: Set[RBS::TypeName]
         env.class_decls.each do |type_name, entry|
           entry.each_decl do |decl|
-            if decl.location&.buffer&.name && Pathname(decl.location.buffer.name) == path
-              set << type_name
-            end
+            set << type_name if decl_path_matches?(decl, path)
           end
         end
         env.interface_decls.each do |type_name, entry|
-          if entry.decl.location&.buffer&.name && Pathname(entry.decl.location.buffer.name) == path
-            set << type_name
-          end
+          set << type_name if decl_path_matches?(entry.decl, path)
         end
         env.type_alias_decls.each do |type_name, entry|
-          if entry.decl.location&.buffer&.name && Pathname(entry.decl.location.buffer.name) == path
-            set << type_name
-          end
+          set << type_name if decl_path_matches?(entry.decl, path)
         end
         env.class_alias_decls.each do |type_name, entry|
-          if entry.decl.location&.buffer&.name && Pathname(entry.decl.location.buffer.name) == path
-            set << type_name
-          end
+          set << type_name if decl_path_matches?(entry.decl, path)
         end
         set
       end
@@ -280,7 +281,7 @@ module Steep
       # Inverts direct_ancestors_of (defined → ancestors) to (ancestor → defined),
       # then takes transitive closure on demand via #expand_descendants_cached.
       def build_old_descendants(entries)
-        graph = {}
+        graph = {} #: Hash[RBS::TypeName, Set[RBS::TypeName]]
         entries.each do |entry|
           entry.direct_ancestors_of.each do |defined, ancestors|
             ancestors.each do |anc|
@@ -292,7 +293,7 @@ module Steep
       end
 
       def build_old_alias_targets(entries)
-        targets_by_alias = {}
+        targets_by_alias = {} #: Hash[RBS::TypeName, Set[RBS::TypeName]]
         entries.each do |entry|
           entry.alias_targets_of.each do |alias_name, targets|
             targets_by_alias[alias_name] = targets
@@ -305,8 +306,9 @@ module Steep
         return if graph.empty?
         queue = set.to_a
         until queue.empty?
-          name = queue.shift
-          (graph[name] || Set[]).each do |descendant|
+          name = queue.shift or break
+          descendants = graph[name] or next
+          descendants.each do |descendant|
             if set.add?(descendant)
               queue << descendant
             end
@@ -371,7 +373,7 @@ module Steep
 
       def expand_alias_dependencies_cached(set, targets_by_alias)
         # Invert: target_type → set of aliases referencing it.
-        referenced_by = {}
+        referenced_by = {} #: Hash[RBS::TypeName, Set[RBS::TypeName]]
         targets_by_alias.each do |alias_name, targets|
           targets.each do |t|
             (referenced_by[t] ||= Set[]) << alias_name
@@ -380,8 +382,9 @@ module Steep
 
         queue = set.to_a
         until queue.empty?
-          name = queue.shift
-          (referenced_by[name] || Set[]).each do |alias_name|
+          name = queue.shift or break
+          aliases = referenced_by[name] or next
+          aliases.each do |alias_name|
             if set.add?(alias_name)
               queue << alias_name
             end
@@ -390,7 +393,7 @@ module Steep
       end
 
       def expand_alias_dependencies_new(set, env)
-        referenced_by = {}
+        referenced_by = {} #: Hash[RBS::TypeName, Set[RBS::TypeName]]
         env.type_alias_decls.each do |alias_name, entry|
           each_type_name_in(entry.decl.type) do |t|
             (referenced_by[t] ||= Set[]) << alias_name
@@ -399,8 +402,9 @@ module Steep
 
         queue = set.to_a
         until queue.empty?
-          name = queue.shift
-          (referenced_by[name] || Set[]).each do |alias_name|
+          name = queue.shift or break
+          aliases = referenced_by[name] or next
+          aliases.each do |alias_name|
             if set.add?(alias_name)
               queue << alias_name
             end

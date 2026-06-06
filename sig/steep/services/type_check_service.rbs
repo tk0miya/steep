@@ -75,7 +75,25 @@ module Steep
         def mark_outdated!: () -> self
       end
 
-      def initialize: (project: Project) -> void
+      attr_reader cache: TypeCheckCache?
+
+      attr_reader initial_changed_names_by_target: Hash[Symbol, Set[RBS::TypeName]]?
+
+      def initialize: (project: Project, ?cache: TypeCheckCache?) -> void
+
+      def initial_changed_names_for: (Symbol target_name) -> Set[RBS::TypeName]
+
+      def cached_signature_lsp: (target: Project::Target, path: Pathname, content: String) -> Array[untyped]?
+
+      def cached_source_lsp: (target: Project::Target, path: Pathname, content: String) -> Array[untyped]?
+
+      def write_signature_cache: (target: Project::Target, path: Pathname, content: String, lsp_diagnostics: Array[untyped], signature_file: SignatureFile) -> void
+
+      def write_source_cache: (target: Project::Target, path: Pathname, content: String, lsp_diagnostics: Array[untyped], source_file: SourceFile) -> void
+
+      def write_env_cache_for_all_targets: () -> void
+
+      private def compute_initial_changed_names_from_cache: (TypeCheckCache cache) -> Hash[Symbol, Set[RBS::TypeName]]
 
       # Returns the diagnostics of signature files -- RBS files and inline RBS declarations
       #

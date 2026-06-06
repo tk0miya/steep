@@ -239,8 +239,9 @@ module Steep
         # changed_names with the cache-derived set so files that became stale
         # since last run are correctly invalidated for cache-hit checks.
         if cache && initial_changed_names_by_target.nil?
-          @initial_changed_names_by_target = compute_initial_changed_names_from_cache
-          @initial_changed_names_by_target.each do |target_name, names|
+          computed = compute_initial_changed_names_from_cache(cache)
+          @initial_changed_names_by_target = computed
+          computed.each do |target_name, names|
             signature_services.fetch(target_name).last_changed_type_names.merge(names)
           end
         end
@@ -318,7 +319,7 @@ module Steep
       # TypeCheckCache#compute_changed_names. Idempotent: callers can invoke
       # this from any worker without coordination.
       def write_env_cache_for_all_targets
-        return unless cache
+        cache = self.cache or return
         signature_services.each do |target_name, service|
           next unless service.status.is_a?(SignatureService::LoadedStatus)
           env = service.latest_env
@@ -341,7 +342,7 @@ module Steep
         end
       end
 
-      private def compute_initial_changed_names_from_cache
+      private def compute_initial_changed_names_from_cache(cache)
         result = {} #: Hash[Symbol, Set[RBS::TypeName]]
         signature_services.each do |target_name, service|
           next unless service.status.is_a?(SignatureService::LoadedStatus)

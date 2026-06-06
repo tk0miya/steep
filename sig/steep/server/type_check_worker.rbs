@@ -161,6 +161,16 @@ module Steep
 
       def typecheck_progress: (guid: String, path: Pathname, target: Project::Target, diagnostics: Array[LSPDiagnostic::json]?) -> void
 
+      def type_check_cache: () -> Services::TypeCheckCache?
+
+      def run_validate_signature_with_cache: (target: Project::Target, path: Pathname, formatter: Diagnostic::LSPFormatter) -> Array[untyped]
+
+      def run_typecheck_source_with_cache: (target: Project::Target, path: Pathname, formatter: Diagnostic::LSPFormatter) -> Array[untyped]?
+
+      def signature_file_content: (Pathname path) -> String?
+
+      def source_file_content: (Pathname path) -> String?
+
       def workspace_symbol_result: (untyped query) -> untyped
 
       def stats_result: () -> Array[StatsCalculator::stats]

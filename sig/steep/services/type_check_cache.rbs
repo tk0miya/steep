@@ -1,0 +1,224 @@
+module Steep
+  module Services
+    class TypeCheckCache
+      ENV_DIR: String
+      SIGNATURES_DIR: String
+      SOURCES_DIR: String
+      META_FILE: String
+
+      attr_reader cache_dir: Pathname
+
+      def initialize: (cache_dir: Pathname | String) -> void
+
+      # --- meta -----------------------------------------------------------
+
+      def meta_path: () -> Pathname
+
+      def load_meta: () -> Meta?
+
+      def write_meta: (?Meta) -> void
+
+      def meta_compatible?: () -> bool
+
+      # --- env entries (per target) --------------------------------------
+
+      def env_dir_for: (Symbol target_name) -> Pathname
+
+      def env_entry_path: (Symbol target_name, Pathname path) -> Pathname
+
+      def load_env_entry: (Symbol target_name, Pathname path) -> EnvEntry?
+
+      def write_env_entry: (Symbol target_name, EnvEntry entry) -> void
+
+      def each_env_entry: (Symbol target_name) { (EnvEntry) -> void } -> void
+                        | (Symbol target_name) -> Enumerator[EnvEntry, void]
+
+      # --- signature entries ---------------------------------------------
+
+      def signature_entry_path: (Symbol target_name, Pathname path) -> Pathname
+
+      def load_signature_entry: (Symbol target_name, Pathname path) -> SignatureEntry?
+
+      def write_signature_entry: (SignatureEntry entry) -> void
+
+      # --- source entries ------------------------------------------------
+
+      def source_entry_path: (Symbol target_name, Pathname path) -> Pathname
+
+      def load_source_entry: (Symbol target_name, Pathname path) -> SourceEntry?
+
+      def write_source_entry: (SourceEntry entry) -> void
+
+      # --- bulk ops ------------------------------------------------------
+
+      def clear: () -> void
+
+      def self.digest_content: (String content) -> String
+
+      # Computes the changed_type_names set for a target given its new env and
+      # the previously cached env entries.
+      def compute_changed_names: (
+        target_name: Symbol,
+        new_env: RBS::Environment,
+        new_ancestor_builder: RBS::DefinitionBuilder::AncestorBuilder
+      ) -> Set[RBS::TypeName]
+
+      private
+
+      def read_marshal: (Pathname file) -> untyped
+
+      def write_marshal: (Pathname file, untyped data) -> void
+
+      def ensure_dir: (Pathname dir) -> void
+
+      def relative_bin_path: (Pathname | String path) -> Pathname
+
+      def collect_env_paths: (RBS::Environment env) -> Set[Pathname]
+
+      def compute_new_digests: (Set[Pathname] paths) -> Hash[Pathname, String]
+
+      def decl_path_matches?: (untyped decl, Pathname path) -> bool
+
+      def collect_defined_type_names_in_path: (RBS::Environment env, Pathname path) -> Set[RBS::TypeName]
+
+      def build_old_descendants: (Array[EnvEntry] entries) -> Hash[RBS::TypeName, Set[RBS::TypeName]]
+
+      def build_old_alias_targets: (Array[EnvEntry] entries) -> Hash[RBS::TypeName, Set[RBS::TypeName]]
+
+      def expand_descendants_cached: (Set[RBS::TypeName] set, Hash[RBS::TypeName, Set[RBS::TypeName]] graph) -> void
+
+      def expand_descendants_new: (Set[RBS::TypeName] set, RBS::Environment env, RBS::DefinitionBuilder::AncestorBuilder ancestor_builder) -> void
+
+      def expand_nested: (Set[RBS::TypeName] set, RBS::Environment | Set[RBS::TypeName] universe_or_env) -> void
+
+      def each_universe_name: (RBS::Environment | Set[RBS::TypeName] universe_or_env) { (RBS::TypeName) -> void } -> void
+
+      def new_env_universe: (RBS::Environment env) -> RBS::Environment
+
+      def expand_alias_dependencies_cached: (Set[RBS::TypeName] set, Hash[RBS::TypeName, Set[RBS::TypeName]] targets_by_alias) -> void
+
+      def expand_alias_dependencies_new: (Set[RBS::TypeName] set, RBS::Environment env) -> void
+
+      def each_type_name_in: (RBS::Types::t type) { (RBS::TypeName) -> void } -> void
+
+      # --- entry classes -------------------------------------------------
+
+      class Meta
+        CURRENT_CACHE_VERSION: Integer
+
+        attr_reader cache_version: Integer
+        attr_reader steep_version: String
+        attr_reader rbs_version: String
+
+        def initialize: (cache_version: Integer, steep_version: String, rbs_version: String) -> void
+
+        def self.current: () -> Meta
+
+        def compatible_with?: (Meta other) -> bool
+
+        def to_h: () -> Hash[Symbol, untyped]
+
+        def self.from_h: (Hash[Symbol, untyped] hash) -> Meta
+      end
+
+      class EnvEntry
+        attr_reader path: Pathname
+        attr_reader content_digest: String
+        attr_reader defined_type_names: Set[RBS::TypeName]
+        attr_reader direct_ancestors_of: Hash[RBS::TypeName, Set[RBS::TypeName]]
+        attr_reader alias_targets_of: Hash[RBS::TypeName, Set[RBS::TypeName]]
+
+        def initialize: (
+          path: Pathname,
+          content_digest: String,
+          defined_type_names: Set[RBS::TypeName],
+          direct_ancestors_of: Hash[RBS::TypeName, Set[RBS::TypeName]],
+          alias_targets_of: Hash[RBS::TypeName, Set[RBS::TypeName]]
+        ) -> void
+
+        def to_h: () -> Hash[Symbol, untyped]
+
+        def self.from_h: (Hash[Symbol, untyped] hash) -> EnvEntry
+      end
+
+      class SignatureEntry
+        attr_reader path: Pathname
+        attr_reader target_name: Symbol
+        attr_reader content_digest: String
+        attr_reader referenced_type_names: Set[RBS::TypeName]
+        attr_reader diagnostics: Array[untyped]
+
+        def initialize: (
+          path: Pathname,
+          target_name: Symbol,
+          content_digest: String,
+          referenced_type_names: Set[RBS::TypeName],
+          diagnostics: Array[untyped]
+        ) -> void
+
+        def to_h: () -> Hash[Symbol, untyped]
+
+        def self.from_h: (Hash[Symbol, untyped] hash) -> SignatureEntry
+      end
+
+      class SourceEntry
+        attr_reader path: Pathname
+        attr_reader target_name: Symbol
+        attr_reader content_digest: String
+        attr_reader referenced_type_names: Set[RBS::TypeName]
+        attr_reader has_unresolved_references: bool
+        attr_reader diagnostics: Array[untyped]
+
+        def initialize: (
+          path: Pathname,
+          target_name: Symbol,
+          content_digest: String,
+          referenced_type_names: Set[RBS::TypeName],
+          has_unresolved_references: bool,
+          diagnostics: Array[untyped]
+        ) -> void
+
+        def to_h: () -> Hash[Symbol, untyped]
+
+        def self.from_h: (Hash[Symbol, untyped] hash) -> SourceEntry
+      end
+
+      class EnvWalker
+        type bucket = {
+          defined_type_names: Set[RBS::TypeName],
+          direct_ancestors_of: Hash[RBS::TypeName, Set[RBS::TypeName]],
+          alias_targets_of: Hash[RBS::TypeName, Set[RBS::TypeName]]
+        }
+
+        attr_reader env: RBS::Environment
+        attr_reader ancestor_builder: RBS::DefinitionBuilder::AncestorBuilder
+
+        def initialize: (env: RBS::Environment, ancestor_builder: RBS::DefinitionBuilder::AncestorBuilder) -> void
+
+        def walk: () -> Hash[Pathname, bucket]
+
+        private
+
+        def bucket_for: (Hash[Pathname, bucket] buckets, Pathname path) -> bucket
+
+        def walk_class_decls: (Hash[Pathname, bucket] buckets) -> void
+
+        def walk_interface_decls: (Hash[Pathname, bucket] buckets) -> void
+
+        def walk_type_alias_decls: (Hash[Pathname, bucket] buckets) -> void
+
+        def walk_class_alias_decls: (Hash[Pathname, bucket] buckets) -> void
+
+        def collect_class_ancestors: (RBS::TypeName type_name) -> Set[RBS::TypeName]
+
+        def collect_interface_ancestors: (RBS::TypeName type_name) -> Set[RBS::TypeName]
+
+        def safe_one_ancestors: (Symbol kind, RBS::TypeName type_name) -> untyped
+
+        def decl_path: (untyped decl) -> Pathname?
+
+        def each_type_name_in: (RBS::Types::t type) { (RBS::TypeName) -> void } -> void
+      end
+    end
+  end
+end

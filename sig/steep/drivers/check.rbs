@@ -66,6 +66,8 @@ module Steep
 
       def with_local_server: [T] (Project) { (LanguageServer::Protocol::Transport::Io::Reader, LanguageServer::Protocol::Transport::Io::Writer) -> T } -> T
 
+      def prepare_type_check_cache: (Project) -> void
+
       def print_typecheck_result: (project: Project, diagnostic_notifications: Array[untyped], error_messages: Array[String]) -> Integer
 
       def build_typecheck_params: (Project project) -> Server::CustomMethods::TypeCheck::params

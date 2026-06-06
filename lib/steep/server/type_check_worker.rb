@@ -87,6 +87,7 @@ module Steep
       # setting STEEP_DISABLE_CACHE=1 (mainly for debugging).
       def type_check_cache
         return @type_check_cache if defined?(@type_check_cache)
+        # @type ivar @type_check_cache: Services::TypeCheckCache?
         @type_check_cache =
           if ENV["STEEP_DISABLE_CACHE"]
             nil
@@ -246,10 +247,10 @@ module Steep
           service.update(changes: job.changes)
           # Persist env snapshot for next run. Only one worker writes (the data
           # is identical across workers) so we don't burn N times the disk IO.
-          if assignment.index == 0 && type_check_cache
+          if assignment.index == 0 && (cache = type_check_cache)
             Steep.measure "writing env cache" do
               service.write_env_cache_for_all_targets
-              type_check_cache.write_meta
+              cache.write_meta
             end
           end
 
@@ -397,7 +398,8 @@ module Steep
         # library path. Try the in-memory state first; fall back to the
         # filesystem so library files (not tracked in `files`) still resolve.
         project.targets.each do |target|
-          file = service.signature_services[target.name].files[path] rescue nil
+          sig_service = service.signature_services[target.name] or next
+          file = sig_service.files[path]
           case file
           when Services::SignatureService::RBSFileStatus
             return file.content
