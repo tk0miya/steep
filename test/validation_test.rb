@@ -1379,6 +1379,59 @@ end
     end
   end
 
+  def test_validate_type_assert__valid
+    with_checker <<-RBS do |checker|
+class Foo
+  %a{assert: x is Integer}
+  def assert_int!: (untyped x) -> void
+end
+      RBS
+
+      validator = Validator.new(checker: checker)
+      validator.validate_decl
+
+      assert_predicate validator, :no_error?
+    end
+  end
+
+  def test_validate_type_assert__unknown_arg
+    with_checker <<-RBS do |checker|
+class Foo
+  %a{assert: wrong is Integer}
+  def assert_int!: (untyped x) -> void
+end
+      RBS
+
+      validator = Validator.new(checker: checker)
+      validator.validate_decl
+
+      assert_operator validator, :has_error?
+      assert_any validator.each_error do |error|
+        error.is_a?(Diagnostic::Signature::TypeGuardSyntaxError) &&
+          error.predicate == "assert: wrong is Integer"
+      end
+    end
+  end
+
+  def test_validate_type_assert__unknown_type
+    with_checker <<-RBS do |checker|
+class Foo
+  %a{assert: x is Unknown}
+  def assert_int!: (untyped x) -> void
+end
+      RBS
+
+      validator = Validator.new(checker: checker)
+      validator.validate_decl
+
+      assert_operator validator, :has_error?
+      assert_any validator.each_error do |error|
+        error.is_a?(Diagnostic::Signature::InvalidTypeGuardType) &&
+          error.type == "Unknown"
+      end
+    end
+  end
+
   def test_validate__deprecated__type_name
     skip "Type name resolution for module/class aliases is changed in RBS 3.10/4.0"
 

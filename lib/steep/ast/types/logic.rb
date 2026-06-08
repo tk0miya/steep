@@ -80,6 +80,28 @@ module Steep
           end
         end
 
+        # A type for assertion-style guard: methods that narrow the subject in
+        # the caller's scope after returning normally (e.g. raise on mismatch).
+        class Assert < Base
+          PATTERN = /\Aassert:\s*(\w+)\s+(is)\s+(.*?)\s*\Z/
+
+          attr_reader :subject
+          attr_reader :type
+
+          def initialize(subject:, type:)
+            @subject = subject
+            @type = type
+          end
+
+          def ==(other)
+            super && subject == other.subject && type == other.type
+          end
+
+          def hash
+            self.class.hash ^ subject.hash ^ type.hash
+          end
+        end
+
         class Env < Base
           attr_reader :truthy, :falsy, :type
 

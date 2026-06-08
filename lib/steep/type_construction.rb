@@ -2737,10 +2737,41 @@ module Steep
       end
     end
 
+    # Apply assertion-style guard narrowing to the env *after* the call.
+    # Used for `%a{assert:arg is TYPE}` methods that return normally only when
+    # the named argument satisfies the asserted type (e.g. raise otherwise).
+    def apply_assert_narrowing(send_node, pair)
+      assert = pair.type
+      return pair unless assert.is_a?(AST::Types::Logic::Assert)
+
+      arguments = send_node.children[2..] || []
+      interpreter = TypeInference::LogicTypeInterpreter.new(
+        subtyping: checker,
+        typing: pair.constr.typing,
+        config: builder_config,
+        self_type: self_type
+      )
+      arg_node = interpreter.find_argument_node(assert.subject, send_node, arguments)
+      return pair unless arg_node
+
+      sub_type = checker.factory.type(assert.type)
+
+      new_env =
+        case arg_node.type
+        when :lvar
+          name = arg_node.children[0]
+          pair.constr.context.type_env.refine_types(local_variable_types: { name => sub_type })
+        else
+          return pair
+        end
+
+      pair.with(constr: pair.constr.with_updated_context(type_env: new_env))
+    end
+
     def synthesize_sendish(node, hint:, tapp:)
       case node.type
       when :send
-        type_send(node, send_node: node, block_params: nil, block_body: nil, tapp: tapp, hint: hint)
+        apply_assert_narrowing(node, type_send(node, send_node: node, block_params: nil, block_body: nil, tapp: tapp, hint: hint))
       when :csend
         yield_self do
           send_type, constr =

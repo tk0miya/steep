@@ -112,6 +112,10 @@ module Steep
 
       def replace_guard_method: (RBS::Definition, RBS::Definition::Method::TypeDef, MethodType) -> MethodType
 
+      def replace_assert_method: (RBS::Definition, RBS::Definition::Method::TypeDef, MethodType) -> MethodType
+
+      def resolve_guard_type: (String type_name, RBS::Definition) -> RBS::Types::t?
+
       def context_from: (RBS::TypeName) -> RBS::Resolver::context
 
       def replace_primitive_method: (method_name, RBS::Definition::Method::TypeDef, MethodType) -> MethodType

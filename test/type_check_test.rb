@@ -2229,6 +2229,84 @@ class TypeCheckTest < Minitest::Test
     )
   end
 
+  def test_type_assert__arg_is_TYPE
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{assert:x is Integer}
+            def assert_int!: (untyped x) -> void
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          o = Object.new
+          # @type var v: untyped
+          v = nil
+
+          o.assert_int!(v)
+          v + 1
+          v.reverse
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 7
+                character: 2
+              end:
+                line: 7
+                character: 9
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_assert__arg_is_TYPE_keyword
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{assert:y is Integer}
+            def assert_int!: (y: untyped) -> void
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          o = Object.new
+          # @type var w: untyped
+          w = nil
+
+          o.assert_int!(y: w)
+          w + 1
+          w.reverse
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 7
+                character: 2
+              end:
+                line: 7
+                character: 9
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
   def test_argument_error__unexpected_unexpected_positional_argument
     run_type_check_test(
       signatures: {

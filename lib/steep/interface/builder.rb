@@ -282,6 +282,7 @@ module Steep
                 method_name = method_name_for(type_def, name)
                 method_type = factory.method_type(type_def.type)
                 method_type = replace_guard_method(definition, type_def, method_type)
+                method_type = replace_assert_method(definition, type_def, method_type)
                 method_type = replace_primitive_method(method_name, type_def, method_type)
                 method_type = replace_kernel_class(method_name, type_def, method_type) { AST::Builtin::Class.instance_type }
                 method_type = add_implicitly_returns_nil(type_def.each_annotation, method_type)
@@ -315,6 +316,7 @@ module Steep
                 method_name = method_name_for(type_def, name)
                 method_type = factory.method_type(type_def.type)
                 method_type = replace_guard_method(definition, type_def, method_type)
+                method_type = replace_assert_method(definition, type_def, method_type)
                 method_type = replace_primitive_method(method_name, type_def, method_type)
                 if type_name.class?
                   method_type = replace_kernel_class(method_name, type_def, method_type) { AST::Types::Name::Singleton.new(name: type_name) }
@@ -750,18 +752,37 @@ module Steep
         operator = AST::Types::Logic::Guard.normalize_operator(op_raw)
         type_name = match[3] or raise
 
+        resolved = resolve_guard_type(type_name, definition)
+        return method_type unless resolved
+
+        guard = AST::Types::Logic::Guard.new(subject: subject, operator: operator, type: resolved)
+        method_type.with(type: method_type.type.with(return_type: guard))
+      end
+
+      def replace_assert_method(definition, method_def, method_type)
+        match = method_def.member_annotations.filter_map { AST::Types::Logic::Assert::PATTERN.match(_1.string) }.first
+        return method_type unless match
+
+        subject = match[1] or raise
+        type_name = match[3] or raise
+
+        resolved = resolve_guard_type(type_name, definition)
+        return method_type unless resolved
+
+        assert = AST::Types::Logic::Assert.new(subject: subject, type: resolved)
+        method_type.with(type: method_type.type.with(return_type: assert))
+      end
+
+      def resolve_guard_type(type_name, definition)
         type = RBS::Parser.parse_type(type_name) rescue nil
-        return method_type unless type
+        return nil unless type
 
         context = context_from(definition.type_name)
         unresolved = false
         resolved = type.map_type_name do |name|
           factory.absolute_type_name(name, context: context) or (unresolved = true; name)
         end
-        return method_type if unresolved
-
-        guard = AST::Types::Logic::Guard.new(subject: subject, operator: operator, type: resolved)
-        method_type.with(type: method_type.type.with(return_type: guard))
+        unresolved ? nil : resolved
       end
 
       def context_from(type_name)

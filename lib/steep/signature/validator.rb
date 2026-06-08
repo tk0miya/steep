@@ -280,7 +280,12 @@ module Steep
       def validate_method_type(definition, method, method_type)
         annotations = method.defs.find { _1.type == method_type }&.member_annotations.to_a
         annotations.each do |annotation|
-          validate_type_guard_annotation(definition, method_type, annotation) if annotation.string.start_with?("guard:")
+          case
+          when annotation.string.start_with?("guard:")
+            validate_type_guard_annotation(definition, method_type, annotation)
+          when annotation.string.start_with?("assert:")
+            validate_type_assert_annotation(definition, method_type, annotation)
+          end
         end
       end
 
@@ -293,6 +298,38 @@ module Steep
 
         subject = match[1] or raise
         unless subject == "self" || guard_subject_param?(method_type, subject)
+          @errors << Diagnostic::Signature::TypeGuardSyntaxError.new(annotation.string, location: annotation.location)
+          return
+        end
+
+        type_name = match[3] or raise
+        type = RBS::Parser.parse_type(type_name) rescue nil
+        if type.nil?
+          @errors << Diagnostic::Signature::InvalidTypeGuardType.new(type_name, location: annotation.location)
+          return
+        end
+
+        context = context_from(definition.type_name)
+        unresolved = false
+        type.map_type_name do |name|
+          factory.absolute_type_name(name, context: context) or (unresolved = true; name)
+        end
+        if unresolved
+          @errors << Diagnostic::Signature::InvalidTypeGuardType.new(type_name, location: annotation.location)
+        end
+      end
+
+      def validate_type_assert_annotation(definition, method_type, annotation)
+        match = AST::Types::Logic::Assert::PATTERN.match(annotation.string)
+        unless match
+          @errors << Diagnostic::Signature::TypeGuardSyntaxError.new(annotation.string, location: annotation.location)
+          return
+        end
+
+        subject = match[1] or raise
+        # Asserts do not yet support a `self` subject (the receiver of the call).
+        # Only parameter names are accepted.
+        unless guard_subject_param?(method_type, subject)
           @errors << Diagnostic::Signature::TypeGuardSyntaxError.new(annotation.string, location: annotation.location)
           return
         end

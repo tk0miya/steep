@@ -280,3 +280,37 @@ end
 * Validation errors on the annotation itself are reported as
   `RBS::Signature::TypeGuardSyntaxError` (syntactic) or
   `RBS::Signature::InvalidTypeGuardType` (the type cannot be parsed or resolved).
+
+### Assertion-style guard
+
+An assertion-style guard declares a method that narrows a parameter in the
+caller's scope after returning normally. Use it for methods that raise on
+mismatch — the type checker treats a successful return as proof of the
+asserted type.
+
+```rbs
+class Object
+  %a{assert:x is Integer}
+  def assert_int!: (untyped x) -> void
+end
+```
+
+```ruby
+# @type var v: untyped
+v = nil
+
+Object.new.assert_int!(v)
+v + 1     # v narrowed to Integer from here onward
+```
+
+#### Syntax
+
+* `%a{assert:` *param-name* `is` *type* `}`
+
+#### Notes
+
+* Currently only parameter-name subjects are supported (no `self`).
+* Narrowing applies to local-variable arguments. Other expressions are left
+  unchanged.
+* Validation errors are reported via the same diagnostics as `%a{guard:...}`
+  (`TypeGuardSyntaxError`, `InvalidTypeGuardType`).

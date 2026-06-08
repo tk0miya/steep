@@ -87,6 +87,8 @@ module Steep
 
       def validate_type_guard_annotation: (RBS::Definition, RBS::MethodType, RBS::AST::Annotation) -> void
 
+      def validate_type_assert_annotation: (RBS::Definition, RBS::MethodType, RBS::AST::Annotation) -> void
+
       def guard_subject_param?: (RBS::MethodType, String name) -> bool
 
       def context_from: (RBS::TypeName) -> RBS::Resolver::context

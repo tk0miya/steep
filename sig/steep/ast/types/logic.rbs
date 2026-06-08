@@ -65,6 +65,18 @@ module Steep
           def initialize: (subject: String, operator: String, type: RBS::Types::t) -> void
         end
 
+        # A type for assertion-style guard.
+        class Assert < Base
+          PATTERN: Regexp
+
+          attr_reader subject: String
+          attr_reader type: RBS::Types::t
+
+          def self.new: (subject: String, type: RBS::Types::t) -> Assert
+
+          def initialize: (subject: String, type: RBS::Types::t) -> void
+        end
+
         # A type with truthy/falsy type environment.
         class Env < Base
           attr_reader truthy: TypeInference::TypeEnv

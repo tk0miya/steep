@@ -180,6 +180,9 @@ module Steep
     #
     def synthesize_sendish: (Parser::AST::Node sendish, hint: AST::Types::t?, tapp: AST::Node::TypeApplication?) -> Pair
 
+    # Apply assertion-style guard narrowing to the env after the call.
+    def apply_assert_narrowing: (Parser::AST::Node send_node, Pair) -> Pair
+
     # The entrypoint to type check method calls, which may be with blocks
     #
     # * `send_node` can be `:send`, `:super`, or `:zsuper`
