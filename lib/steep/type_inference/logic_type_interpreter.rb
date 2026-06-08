@@ -20,11 +20,13 @@ module Steep
       attr_reader :subtyping
       attr_reader :typing
       attr_reader :config
+      attr_reader :self_type
 
-      def initialize(subtyping:, typing:, config:)
+      def initialize(subtyping:, typing:, config:, self_type: nil)
         @subtyping = subtyping
         @typing = typing
         @config = config
+        @self_type = self_type
       end
 
       def factory
@@ -165,7 +167,7 @@ module Steep
           case type
           when AST::Types::Logic::Base
             receiver, _, *arguments = node.children
-            if (truthy_result, falsy_result = evaluate_method_call(env: env, type: type, receiver: receiver, arguments: arguments))
+            if (truthy_result, falsy_result = evaluate_method_call(node: node, env: env, type: type, receiver: receiver, arguments: arguments))
               return [truthy_result, falsy_result]
             end
           else
@@ -299,7 +301,7 @@ module Steep
         end
       end
 
-      def evaluate_method_call(env:, type:, receiver:, arguments:)
+      def evaluate_method_call(env:, type:, receiver:, arguments:, node: nil)
         case type
         when AST::Types::Logic::ReceiverIsNil
           if receiver && arguments.size.zero?
@@ -441,6 +443,75 @@ module Steep
               truthy_result.update_type { FALSE }
             ]
           end
+
+        when AST::Types::Logic::Guard
+          # TODO: Support argument types (ex. `self is arg1`)
+          # TODO: Support class' type param types (ex. `self is T`)
+          # TODO: Support method's type param types (ex. `self is T`)
+          # TODO: Support is_a operator
+
+          # Determine the effective receiver type and how to refine it:
+          # - explicit receiver other than `self`: narrow via refine_node_type
+          # - explicit `self` receiver, or implicit self call: narrow via env.refined_self_type
+          receiver_type, narrow_self =
+            if receiver
+              rtype = factory.deep_expand_alias(typing.type_of(node: receiver)) || raise
+              if rtype.is_a?(AST::Types::Self) && self_type
+                [self_type, true]
+              else
+                [rtype, false]
+              end
+            elsif self_type
+              [self_type, true]
+            end
+
+          if receiver_type
+            sub_type = factory.type(type.type)
+            error_node = receiver || node
+
+            # User-defined guard semantics (different from is_a?):
+            # - Narrowing is valid when the guard type and receiver type have any
+            #   subtype relationship in either direction. This covers both
+            #   "narrow to a more specific class" (e.g. Object → Integer) and
+            #   "narrow to a module/interface the receiver implements"
+            #   (e.g. Integer → Comparable).
+            # - Truthy branch narrows to the guard type exactly, honoring the
+            #   user's explicit annotation. This is especially important for
+            #   interface types where keeping the receiver type would defeat the
+            #   purpose of the guard.
+            # - Falsy branch keeps the receiver type; the predicate is
+            #   user-defined and may return false for arbitrary reasons even
+            #   when the receiver statically satisfies the guard type.
+            if no_subtyping?(sub_type: sub_type, super_type: receiver_type) &&
+                no_subtyping?(sub_type: receiver_type, super_type: sub_type)
+              typing.add_error(Diagnostic::Ruby::InsufficientTypeGuard.new(node: error_node, super_type: receiver_type, sub_type: sub_type)) if error_node
+              return
+            end
+
+            truthy_type = sub_type
+            falsy_type = receiver_type
+
+            truthy_env, falsy_env =
+              if narrow_self
+                [
+                  env.refine_types(self_type: truthy_type),
+                  env.refine_types(self_type: falsy_type)
+                ]
+              else
+                receiver or raise
+                refine_node_type(
+                  env: env,
+                  node: receiver,
+                  truthy_type: truthy_type,
+                  falsy_type: falsy_type
+                )
+              end
+
+            truthy_result = Result.new(type: TRUE, env: truthy_env, unreachable: false)
+            falsy_result = Result.new(type: FALSE, env: falsy_env, unreachable: false)
+
+            [truthy_result, falsy_result]
+          end
         end
       end
 
@@ -577,8 +648,8 @@ module Steep
         end
       end
 
-      def type_case_select(type, klass)
-        truth_types, false_types = type_case_select0(type, klass)
+      def type_guard_type_case_select(type, guard_type)
+        truth_types, false_types = type_case_select0(type, guard_type)
 
         [
           truth_types.empty? ? nil : AST::Types::Union.build(types: truth_types),
@@ -586,16 +657,24 @@ module Steep
         ]
       end
 
-      def type_case_select0(type, klass)
+      def type_case_select(type, klass)
         instance_type = factory.instance_type(klass)
+        truth_types, false_types = type_case_select0(type, instance_type)
 
+        [
+          truth_types.empty? ? nil : AST::Types::Union.build(types: truth_types),
+          false_types.empty? ? nil : AST::Types::Union.build(types: false_types)
+        ]
+      end
+
+      def type_case_select0(type, instance_type)
         case type
         when AST::Types::Union
           truthy_types = [] # :Array[AST::Types::t]
           falsy_types = [] #: Array[AST::Types::t]
 
           type.types.each do |ty|
-            truths, falses = type_case_select0(ty, klass)
+            truths, falses = type_case_select0(ty, instance_type)
 
             if truths.empty?
               falsy_types.push(ty)
@@ -612,7 +691,7 @@ module Steep
           if ty == type
             [[type], [type]]
           else
-            type_case_select0(ty, klass)
+            type_case_select0(ty, instance_type)
           end
 
         when AST::Types::Any, AST::Types::Top, AST::Types::Var

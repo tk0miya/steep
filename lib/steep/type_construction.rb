@@ -1630,7 +1630,7 @@ module Steep
           end
 
         when :self
-          add_typing node, type: AST::Types::Self.instance
+          add_typing node, type: context.type_env.refined_self_type || AST::Types::Self.instance
 
         when :cbase
           add_typing node, type: AST::Types::Void.instance
@@ -1801,7 +1801,7 @@ module Steep
 
             left_type, constr, left_context = synthesize(left_node, hint: hint, condition: true).to_ary
 
-            interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: typing, config: builder_config)
+            interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: typing, config: builder_config, self_type: self_type)
             left_truthy, left_falsy = interpreter.eval(env: left_context.type_env, node: left_node)
 
             if left_type.is_a?(AST::Types::Logic::Env)
@@ -1860,7 +1860,7 @@ module Steep
             end
             left_type, constr, left_context = synthesize(left_node, hint: left_hint, condition: true).to_ary
 
-            interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: typing, config: builder_config)
+            interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: typing, config: builder_config, self_type: self_type)
             left_truthy, left_falsy = interpreter.eval(env: left_context.type_env, node: left_node)
 
             if left_type.is_a?(AST::Types::Logic::Env)
@@ -1914,7 +1914,7 @@ module Steep
             cond, true_clause, false_clause = node.children
 
             cond_type, constr = synthesize(cond, condition: true).to_ary
-            interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: constr.typing, config: builder_config)
+            interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: constr.typing, config: builder_config, self_type: self_type)
             truthy, falsy = interpreter.eval(env: constr.context.type_env, node: cond)
 
             if true_clause
@@ -2025,7 +2025,7 @@ module Steep
             cond, *whens, els = node.children
 
             constr = self #: TypeConstruction
-            interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: typing, config: builder_config)
+            interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: typing, config: builder_config, self_type: self_type)
 
             if cond
               types, envs = TypeInference::CaseWhen.type_check(constr, node, interpreter, hint: hint, condition: condition)
@@ -2297,7 +2297,7 @@ module Steep
             cond, body = node.children
             cond_type, constr = synthesize(cond, condition: true).to_ary
 
-            interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: typing, config: builder_config)
+            interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: typing, config: builder_config, self_type: self_type)
             truthy, falsy = interpreter.eval(env: constr.context.type_env, node: cond)
             truthy_env = truthy.env
             falsy_env = falsy.env

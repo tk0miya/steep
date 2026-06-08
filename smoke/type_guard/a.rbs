@@ -1,0 +1,10 @@
+class Object
+  %a{guard:self is Integer}
+  def integer?: () -> bool
+
+  %a{guard:self is Array[Integer]}
+  def int_array?: () -> bool
+
+  %a{guard:self is singleton(String)}
+  def self.string_class?: () -> bool
+end

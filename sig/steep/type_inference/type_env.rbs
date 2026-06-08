@@ -39,6 +39,10 @@ module Steep
 
       attr_reader constant_env: ConstantEnv
 
+      # The narrowed type of `self` introduced by a type guard, or `nil` if `self`
+      # is not refined relative to the surrounding context's static `self_type`.
+      attr_reader refined_self_type: AST::Types::t?
+
       @pure_node_descendants: Hash[Parser::AST::Node, Set[Parser::AST::Node]]
 
       def initialize: (
@@ -47,7 +51,8 @@ module Steep
           ?instance_variable_types: Hash[Symbol, AST::Types::t],
           ?global_types: Hash[Symbol, AST::Types::t],
           ?constant_types: Hash[RBS::TypeName, AST::Types::t],
-          ?pure_method_calls: Hash[Parser::AST::Node, [MethodCall::Typed, AST::Types::t?]]
+          ?pure_method_calls: Hash[Parser::AST::Node, [MethodCall::Typed, AST::Types::t?]],
+          ?refined_self_type: AST::Types::t?
         ) -> void
 
       def update: (
@@ -55,7 +60,8 @@ module Steep
           ?instance_variable_types: Hash[Symbol, AST::Types::t],
           ?global_types: Hash[Symbol, AST::Types::t],
           ?constant_types: Hash[RBS::TypeName, AST::Types::t],
-          ?pure_method_calls: Hash[Parser::AST::Node, [MethodCall::Typed, AST::Types::t?]]
+          ?pure_method_calls: Hash[Parser::AST::Node, [MethodCall::Typed, AST::Types::t?]],
+          ?refined_self_type: AST::Types::t?
         ) -> TypeEnv
 
       def merge: (
@@ -63,7 +69,8 @@ module Steep
           ?instance_variable_types: Hash[Symbol, AST::Types::t],
           ?global_types: Hash[Symbol, AST::Types::t],
           ?constant_types: Hash[RBS::TypeName, AST::Types::t],
-          ?pure_method_calls: Hash[Parser::AST::Node, [MethodCall::Typed, AST::Types::t?]]
+          ?pure_method_calls: Hash[Parser::AST::Node, [MethodCall::Typed, AST::Types::t?]],
+          ?refined_self_type: AST::Types::t?
         ) -> TypeEnv
 
       # Returns type of `name`.
@@ -87,7 +94,7 @@ module Steep
       # * Receives types of updated local variables and pure calls.
       # * The local variable types will be
       #
-      def refine_types: (?local_variable_types: Hash[Symbol, AST::Types::t], ?pure_call_types: Hash[Parser::AST::Node, AST::Types::t]) -> TypeEnv
+      def refine_types: (?local_variable_types: Hash[Symbol, AST::Types::t], ?pure_call_types: Hash[Parser::AST::Node, AST::Types::t], ?self_type: AST::Types::t?) -> TypeEnv
 
       def enforced_type: (Symbol name) -> AST::Types::t?
 

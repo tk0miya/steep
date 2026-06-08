@@ -37,13 +37,17 @@ module Steep
 
       attr_reader config: Interface::Builder::Config
 
-      def initialize: (subtyping: Subtyping::Check, typing: Typing, config: Interface::Builder::Config) -> void
+      # The static `self` type of the surrounding context.
+      # Used to evaluate type guards on implicit or explicit `self` receivers.
+      attr_reader self_type: AST::Types::t?
+
+      def initialize: (subtyping: Subtyping::Check, typing: Typing, config: Interface::Builder::Config, ?self_type: AST::Types::t?) -> void
 
       def eval: (env: TypeEnv, node: Parser::AST::Node) -> [Result, Result]
 
       def evaluate_node: (env: TypeEnv, node: Parser::AST::Node, ?type: AST::Types::t) -> [Result, Result]
 
-      def evaluate_method_call: (env: TypeEnv, type: AST::Types::Logic::Base, receiver: Parser::AST::Node?, arguments: Array[Parser::AST::Node]) -> [Result, Result]?
+      def evaluate_method_call: (env: TypeEnv, type: AST::Types::Logic::Base, receiver: Parser::AST::Node?, arguments: Array[Parser::AST::Node], ?node: Parser::AST::Node?) -> [Result, Result]?
 
       def evaluate_union_method_call: (node: Parser::AST::Node, type: AST::Types::t, env: TypeEnv, receiver: Parser::AST::Node, receiver_type: AST::Types::Union) -> [Result, Result]?
 
@@ -100,9 +104,11 @@ module Steep
       #
       def literal_var_type_case_select: (Parser::AST::Node value_node, AST::Types::t arg_type, ?for_receiver: bool) -> [Array[AST::Types::t], Array[AST::Types::t]]?
 
+      def type_guard_type_case_select: (AST::Types::t `type`, AST::Types::t guard_type) -> [AST::Types::t?, AST::Types::t?]
+
       def type_case_select: (AST::Types::t `type`, RBS::TypeName klass) -> [AST::Types::t?, AST::Types::t?]
 
-      def type_case_select0: (AST::Types::t `type`, RBS::TypeName klass) -> [Array[AST::Types::t], Array[AST::Types::t]]
+      def type_case_select0: (AST::Types::t `type`, AST::Types::t instance_type) -> [Array[AST::Types::t], Array[AST::Types::t]]
 
       def try_convert: (AST::Types::t, Symbol) -> AST::Types::t?
 

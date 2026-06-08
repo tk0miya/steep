@@ -1,0 +1,33 @@
+---
+- file: a.rb
+  diagnostics:
+  - range:
+      start:
+        line: 7
+        character: 4
+      end:
+        line: 7
+        character: 8
+    severity: ERROR
+    message: Type `::Object` does not have method `succ`
+    code: Ruby::NoMethod
+  - range:
+      start:
+        line: 16
+        character: 4
+      end:
+        line: 16
+        character: 10
+    severity: ERROR
+    message: Type `::Object` does not have method `length`
+    code: Ruby::NoMethod
+  - range:
+      start:
+        line: 23
+        character: 10
+      end:
+        line: 23
+        character: 14
+    severity: ERROR
+    message: Type `::Object` does not have method `succ`
+    code: Ruby::NoMethod

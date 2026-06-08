@@ -179,3 +179,80 @@ So the resulting type is `(Hash[String, Account]) { (Account, Hash[String, Accou
 #### Syntax
 
 * `#$` *type*
+
+## RBS Annotations
+
+The following annotations are written in RBS files (not Ruby source) using the `%a{...}` syntax,
+and modify how Steep interprets the surrounding declaration.
+
+### Type guard
+
+A type guard annotation declares a user-defined method as a type guard: when the method
+returns a truthy value, Steep narrows the receiver's type to the given type in that branch
+(and removes it in the falsy branch when possible).
+
+Steep already understands core type guards such as `#is_a?`, `#kind_of?`, and `#nil?`.
+This annotation lets you declare your own predicate methods so the type checker can narrow
+through them too.
+
+The annotation is attached to the method declaration in RBS. The predicate currently
+supports the `self is TYPE` form only.
+
+#### Example
+
+```rbs
+class Object
+  %a{guard:self is Integer}
+  def integer?: () -> bool
+
+  %a{guard:self is Array[Integer]}
+  def int_array?: () -> bool
+
+  %a{guard:self is singleton(String)}
+  def self.string_class?: () -> bool
+end
+```
+
+```ruby
+# @type var a: Object
+a = (_ = nil)
+
+if a.integer?
+  a + 1       # a is narrowed to Integer
+else
+  a.succ      # error: Object does not have `succ`
+end
+```
+
+#### Syntax
+
+* `%a{guard:` `self` `is` *type* `}`
+
+#### Notes
+
+* The annotation also narrows `self` for predicates called on an implicit or
+  explicit `self` receiver:
+
+  ```ruby
+  class Object
+    def m
+      if integer?   # self is narrowed to Integer here
+        self + 1
+      end
+    end
+  end
+  ```
+
+* The truthy branch is always narrowed to the annotated type. This is useful
+  when the guard type is a module or interface: even if the receiver is already
+  a subtype of the guard type (for example `Integer` is `Comparable`), the
+  truthy branch sees the guard type so only methods declared on it are
+  available. The falsy branch keeps the receiver's static type, because a
+  user-defined predicate may return false for arbitrary reasons.
+* Narrowing requires that the guard type and the receiver's static type have a
+  subtype relationship in either direction. When they do not (for example
+  guarding an `Integer` receiver to `String`), Steep reports
+  `Ruby::InsufficientTypeGuard`.
+* Validation errors on the annotation itself are reported as
+  `RBS::Signature::TypeGuardSyntaxError` (syntactic) or
+  `RBS::Signature::InvalidTypeGuardType` (the type cannot be parsed or resolved).

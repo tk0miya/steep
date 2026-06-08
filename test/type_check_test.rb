@@ -1617,6 +1617,455 @@ class TypeCheckTest < Minitest::Test
     )
   end
 
+  def test_type_guard__self_is_TYPE
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:self is Integer}
+            def integer?: () -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          # @type var a: Object
+          a = (_ = nil)
+
+          if a.integer?
+            a + 1
+          else
+            a.succ
+          end
+
+          a + 1
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 7
+                character: 4
+              end:
+                line: 7
+                character: 8
+            severity: ERROR
+            message: Type `::Object` does not have method `succ`
+            code: Ruby::NoMethod
+          - range:
+              start:
+                line: 10
+                character: 2
+              end:
+                line: 10
+                character: 3
+            severity: ERROR
+            message: Type `(::Integer | ::Object)` does not have method `+`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__self_is_TYPE_no_subtyping
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:self is String}
+            def string?: () -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          a = 1
+
+          if a.string?
+            a.reverse
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 3
+                character: 3
+              end:
+                line: 3
+                character: 4
+            severity: ERROR
+            message: 'Cannot narrow `::Integer` to `::String`: types have no subtype relation'
+            code: Ruby::InsufficientTypeGuard
+          - range:
+              start:
+                line: 4
+                character: 4
+              end:
+                line: 4
+                character: 11
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__self_is_TYPE_unknown
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:self is Unknown}
+            def unknown?: () -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          a = 1
+
+          if a.unknown?
+            a.reverse
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 4
+                character: 4
+              end:
+                line: 4
+                character: 11
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__self_is_TYPE_singleton
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:self is singleton(String)}
+            def self.string?: () -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          cls = Object
+
+          if cls.string?
+            cls.new + ""
+          else
+            cls.new.succ
+          end
+
+          cls.new + ""
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 6
+                character: 10
+              end:
+                line: 6
+                character: 14
+            severity: ERROR
+            message: Type `::Object` does not have method `succ`
+            code: Ruby::NoMethod
+          - range:
+              start:
+                line: 9
+                character: 8
+              end:
+                line: 9
+                character: 9
+            severity: ERROR
+            message: Type `(::String | ::Object)` does not have method `+`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__self_is_TYPE_generic
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:self is Array[Integer]}
+            def int_array?: () -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          # @type var obj: Object
+          obj = (_ = nil)
+
+          if obj.int_array?
+            obj.sum
+          else
+            obj.length
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 7
+                character: 6
+              end:
+                line: 7
+                character: 12
+            severity: ERROR
+            message: Type `::Object` does not have method `length`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__self_is_TYPE_multiple_annotations
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{pure}
+            %a{guard:self is Integer}
+            def integer?: () -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          # @type var a: Object
+          a = (_ = nil)
+
+          if a.integer?
+            a + 1
+          else
+            a.succ
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 7
+                character: 4
+              end:
+                line: 7
+                character: 8
+            severity: ERROR
+            message: Type `::Object` does not have method `succ`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__self_is_TYPE_unless
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:self is Integer}
+            def integer?: () -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          # @type var a: Object
+          a = (_ = nil)
+
+          unless a.integer?
+            a.succ
+          else
+            a + 1
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 5
+                character: 4
+              end:
+                line: 5
+                character: 8
+            severity: ERROR
+            message: Type `::Object` does not have method `succ`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__self_is_TYPE_explicit_self
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:self is Integer}
+            def integer?: () -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          class Object
+            def m
+              if self.integer?
+                self + 1
+              else
+                self.succ
+              end
+            end
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 2
+                character: 6
+              end:
+                line: 2
+                character: 7
+            severity: ERROR
+            message: Method `::Object#m` is not declared in RBS
+            code: Ruby::UndeclaredMethodDefinition
+          - range:
+              start:
+                line: 6
+                character: 11
+              end:
+                line: 6
+                character: 15
+            severity: ERROR
+            message: Type `::Object` does not have method `succ`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__self_is_TYPE_module_include
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:self is Comparable}
+            def cmp?: () -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          i = 1
+
+          if i.cmp?
+            i + 1
+          else
+            i + 1
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 4
+                character: 4
+              end:
+                line: 4
+                character: 5
+            severity: ERROR
+            message: Type `::Comparable` does not have method `+`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__self_is_TYPE_implicit_self
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:self is Integer}
+            def integer?: () -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          class Object
+            def m
+              if integer?
+                self + 1
+              else
+                self.succ
+              end
+            end
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 2
+                character: 6
+              end:
+                line: 2
+                character: 7
+            severity: ERROR
+            message: Method `::Object#m` is not declared in RBS
+            code: Ruby::UndeclaredMethodDefinition
+          - range:
+              start:
+                line: 6
+                character: 11
+              end:
+                line: 6
+                character: 15
+            severity: ERROR
+            message: Type `::Object` does not have method `succ`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
   def test_argument_error__unexpected_unexpected_positional_argument
     run_type_check_test(
       signatures: {

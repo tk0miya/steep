@@ -7,6 +7,7 @@ module Steep
       attr_reader :instance_variable_types, :global_types, :constant_types
       attr_reader :constant_env
       attr_reader :pure_method_calls
+      attr_reader :refined_self_type
 
       def to_s
         array = [] #: Array[String]
@@ -39,29 +40,31 @@ module Steep
         "{ #{array.join(", ")} }"
       end
 
-      def initialize(constant_env, local_variable_types: {}, instance_variable_types: {}, global_types: {}, constant_types: {}, pure_method_calls: {})
+      def initialize(constant_env, local_variable_types: {}, instance_variable_types: {}, global_types: {}, constant_types: {}, pure_method_calls: {}, refined_self_type: nil)
         @constant_env = constant_env
         @local_variable_types = local_variable_types
         @instance_variable_types = instance_variable_types
         @global_types = global_types
         @constant_types = constant_types
         @pure_method_calls = pure_method_calls
+        @refined_self_type = refined_self_type
 
         @pure_node_descendants = {}
       end
 
-      def update(local_variable_types: self.local_variable_types, instance_variable_types: self.instance_variable_types, global_types: self.global_types, constant_types: self.constant_types, pure_method_calls: self.pure_method_calls)
+      def update(local_variable_types: self.local_variable_types, instance_variable_types: self.instance_variable_types, global_types: self.global_types, constant_types: self.constant_types, pure_method_calls: self.pure_method_calls, refined_self_type: self.refined_self_type)
         TypeEnv.new(
           constant_env,
           local_variable_types: local_variable_types,
           instance_variable_types: instance_variable_types,
           global_types: global_types,
           constant_types: constant_types,
-          pure_method_calls: pure_method_calls
+          pure_method_calls: pure_method_calls,
+          refined_self_type: refined_self_type
         )
       end
 
-      def merge(local_variable_types: {}, instance_variable_types: {}, global_types: {}, constant_types: {}, pure_method_calls: {})
+      def merge(local_variable_types: {}, instance_variable_types: {}, global_types: {}, constant_types: {}, pure_method_calls: {}, refined_self_type: self.refined_self_type)
         local_variable_types = self.local_variable_types.merge(local_variable_types)
         instance_variable_types = self.instance_variable_types.merge(instance_variable_types)
         global_types = self.global_types.merge(global_types)
@@ -74,7 +77,8 @@ module Steep
           instance_variable_types: instance_variable_types,
           global_types:  global_types,
           constant_types: constant_types,
-          pure_method_calls: pure_method_calls
+          pure_method_calls: pure_method_calls,
+          refined_self_type: refined_self_type
         )
       end
 
@@ -134,7 +138,7 @@ module Steep
         )
       end
 
-      def refine_types(local_variable_types: {}, pure_call_types: {})
+      def refine_types(local_variable_types: {}, pure_call_types: {}, self_type: nil)
         local_variable_updates = {} #: Hash[Symbol, local_variable_entry]
 
         local_variable_types.each do |name, type|
@@ -154,7 +158,11 @@ module Steep
           pure_call_updates[node] = [call, type]
         end
 
-        merge(local_variable_types: local_variable_updates, pure_method_calls: pure_call_updates)
+        merge(
+          local_variable_types: local_variable_updates,
+          pure_method_calls: pure_call_updates,
+          refined_self_type: self_type || refined_self_type
+        )
       end
 
       def constant(arg1, arg2)
@@ -254,7 +262,15 @@ module Steep
           hash[node] = [call, refined_type]
         end
 
-        assign_local_variables(assignments).merge(pure_method_calls: pure_call_updates)
+        joined_self_type =
+          if envs.all? { |env| env.refined_self_type }
+            AST::Types::Union.build(types: envs.map { |env| env.refined_self_type or raise })
+          end
+
+        assign_local_variables(assignments).merge(
+          pure_method_calls: pure_call_updates,
+          refined_self_type: joined_self_type
+        )
       end
 
       def add_pure_call(node, call, type)
