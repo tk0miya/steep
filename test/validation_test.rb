@@ -1342,6 +1342,43 @@ end
     end
   end
 
+  def test_validate_type_guard__unknown_arg
+    with_checker <<-RBS do |checker|
+class Foo
+  %a{guard: wrong is Integer}
+  def foo: (untyped x) -> bool
+end
+      RBS
+
+      validator = Validator.new(checker: checker)
+      validator.validate_decl
+
+      assert_operator validator, :has_error?
+      assert_any validator.each_error do |error|
+        error.is_a?(Diagnostic::Signature::TypeGuardSyntaxError) &&
+          error.predicate == "guard: wrong is Integer"
+      end
+    end
+  end
+
+  def test_validate_type_guard__arg_subject
+    with_checker <<-RBS do |checker|
+class Foo
+  %a{guard: x is Integer}
+  def foo: (untyped x) -> bool
+
+  %a{guard: key is String}
+  def bar: (key: untyped) -> bool
+end
+      RBS
+
+      validator = Validator.new(checker: checker)
+      validator.validate_decl
+
+      assert_predicate validator, :no_error?
+    end
+  end
+
   def test_validate__deprecated__type_name
     skip "Type name resolution for module/class aliases is changed in RBS 3.10/4.0"
 

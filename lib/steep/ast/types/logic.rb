@@ -54,7 +54,12 @@ module Steep
         end
 
         class Guard < Base
-          PATTERN = /\Aguard:\s*(self)\s+(is)\s+(.*?)\s*\Z/
+          PATTERN = /\Aguard:\s*(\w+)\s+(is\s+not|is)\s+(.*?)\s*\Z/
+
+          # Normalize operator into either "is" or "is not".
+          def self.normalize_operator(op)
+            op.match?(/\Ais\s+not\z/) ? "is not" : "is"
+          end
 
           attr_reader :subject
           attr_reader :operator

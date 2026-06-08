@@ -291,6 +291,12 @@ module Steep
           return
         end
 
+        subject = match[1] or raise
+        unless subject == "self" || guard_subject_param?(method_type, subject)
+          @errors << Diagnostic::Signature::TypeGuardSyntaxError.new(annotation.string, location: annotation.location)
+          return
+        end
+
         type_name = match[3] or raise
         type = RBS::Parser.parse_type(type_name) rescue nil
         if type.nil?
@@ -306,6 +312,20 @@ module Steep
         if unresolved
           @errors << Diagnostic::Signature::InvalidTypeGuardType.new(type_name, location: annotation.location)
         end
+      end
+
+      def guard_subject_param?(method_type, name)
+        sym = name.to_sym
+        function = method_type.type
+        return false unless function.is_a?(RBS::Types::Function)
+
+        function.required_positionals.any? { _1.name == sym } ||
+          function.optional_positionals.any? { _1.name == sym } ||
+          function.trailing_positionals.any? { _1.name == sym } ||
+          function.rest_positionals&.name == sym ||
+          function.required_keywords.key?(sym) ||
+          function.optional_keywords.key?(sym) ||
+          function.rest_keywords&.name == sym
       end
 
       def context_from(type_name)

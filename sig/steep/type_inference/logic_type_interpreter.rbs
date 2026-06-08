@@ -51,6 +51,22 @@ module Steep
 
       def evaluate_union_method_call: (node: Parser::AST::Node, type: AST::Types::t, env: TypeEnv, receiver: Parser::AST::Node, receiver_type: AST::Types::Union) -> [Result, Result]?
 
+      # Resolve the effective receiver-type and narrowing target for a Guard
+      # type. The target is either `:self` (refined through env.refined_self_type)
+      # or an AST node (refined through refine_node_type).
+      def guard_narrow_target: (AST::Types::Logic::Guard, Parser::AST::Node? receiver, Array[Parser::AST::Node] arguments, Parser::AST::Node? send_node) -> [AST::Types::t?, (Parser::AST::Node | :self)?]
+
+      # Resolve the AST node corresponding to a named parameter of the called
+      # method. Returns nil if the name cannot be matched.
+      def find_argument_node: (String name, Parser::AST::Node send_node, Array[Parser::AST::Node] arguments) -> Parser::AST::Node?
+
+      # Compute narrowed truthy/falsy types for a user-defined guard.
+      # Returns [truthy_type, falsy_type, unreachable_truthy, unreachable_falsy].
+      # Either type is `nil` when the branch should fall back to `receiver_type`
+      # (no narrowing applied). When both types are `nil`, an error has been
+      # reported and the caller should bail out.
+      def guard_branch_types: (String operator, AST::Types::t receiver_type, AST::Types::t sub_type, Parser::AST::Node? error_node) -> [AST::Types::t?, AST::Types::t?, bool, bool]
+
       # Apply type refinement to `node` as `truthy_type` and `falsy_type`.
       #
       # This is done by top-down manner.

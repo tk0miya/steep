@@ -445,74 +445,169 @@ module Steep
           end
 
         when AST::Types::Logic::Guard
-          # TODO: Support argument types (ex. `self is arg1`)
           # TODO: Support class' type param types (ex. `self is T`)
           # TODO: Support method's type param types (ex. `self is T`)
           # TODO: Support is_a operator
 
-          # Determine the effective receiver type and how to refine it:
-          # - explicit receiver other than `self`: narrow via refine_node_type
-          # - explicit `self` receiver, or implicit self call: narrow via env.refined_self_type
-          receiver_type, narrow_self =
-            if receiver
-              rtype = factory.deep_expand_alias(typing.type_of(node: receiver)) || raise
-              if rtype.is_a?(AST::Types::Self) && self_type
-                [self_type, true]
-              else
-                [rtype, false]
-              end
-            elsif self_type
-              [self_type, true]
-            end
+          # Determine the effective receiver type and how to refine it.
+          # narrow_target is either:
+          # - :self      → narrow via env.refined_self_type
+          # - AST::Node  → narrow via refine_node_type (receiver or arg node)
+          receiver_type, narrow_target = guard_narrow_target(type, receiver, arguments, node)
 
-          if receiver_type
+          if receiver_type && narrow_target
             sub_type = factory.type(type.type)
-            error_node = receiver || node
+            error_node =
+              if narrow_target == :self
+                receiver || node
+              else
+                narrow_target
+              end
 
-            # User-defined guard semantics (different from is_a?):
-            # - Narrowing is valid when the guard type and receiver type have any
-            #   subtype relationship in either direction. This covers both
-            #   "narrow to a more specific class" (e.g. Object → Integer) and
-            #   "narrow to a module/interface the receiver implements"
-            #   (e.g. Integer → Comparable).
-            # - Truthy branch narrows to the guard type exactly, honoring the
-            #   user's explicit annotation. This is especially important for
-            #   interface types where keeping the receiver type would defeat the
-            #   purpose of the guard.
-            # - Falsy branch keeps the receiver type; the predicate is
-            #   user-defined and may return false for arbitrary reasons even
-            #   when the receiver statically satisfies the guard type.
-            if no_subtyping?(sub_type: sub_type, super_type: receiver_type) &&
-                no_subtyping?(sub_type: receiver_type, super_type: sub_type)
-              typing.add_error(Diagnostic::Ruby::InsufficientTypeGuard.new(node: error_node, super_type: receiver_type, sub_type: sub_type)) if error_node
-              return
-            end
+            truthy_type, falsy_type, unreachable_truthy, unreachable_falsy =
+              guard_branch_types(type.operator, receiver_type, sub_type, error_node)
 
-            truthy_type = sub_type
-            falsy_type = receiver_type
+            return if truthy_type.nil? && falsy_type.nil? # error already reported
 
             truthy_env, falsy_env =
-              if narrow_self
+              if narrow_target == :self
                 [
-                  env.refine_types(self_type: truthy_type),
-                  env.refine_types(self_type: falsy_type)
+                  env.refine_types(self_type: truthy_type || receiver_type),
+                  env.refine_types(self_type: falsy_type || receiver_type)
                 ]
               else
-                receiver or raise
                 refine_node_type(
                   env: env,
-                  node: receiver,
-                  truthy_type: truthy_type,
-                  falsy_type: falsy_type
+                  node: narrow_target,
+                  truthy_type: truthy_type || receiver_type,
+                  falsy_type: falsy_type || receiver_type
                 )
               end
 
             truthy_result = Result.new(type: TRUE, env: truthy_env, unreachable: false)
+            truthy_result.unreachable! if unreachable_truthy
+
             falsy_result = Result.new(type: FALSE, env: falsy_env, unreachable: false)
+            falsy_result.unreachable! if unreachable_falsy
 
             [truthy_result, falsy_result]
           end
         end
+      end
+
+      # Compute the narrowed truthy/falsy types for a user-defined guard.
+      #
+      # `is X` (asymmetric, conservative falsy):
+      #   - Narrowing is valid when guard and receiver have a subtype relation
+      #     in either direction (covers both "narrow to more specific class"
+      #     and "narrow to module/interface the receiver implements").
+      #   - Truthy is the guard type as written, honoring the annotation even
+      #     when the guard is an interface that adds no information statically.
+      #   - Falsy keeps the receiver type because user-defined predicates may
+      #     return false for arbitrary reasons.
+      #   - Emits InsufficientTypeGuard when no relation exists.
+      #
+      # `is not X` (symmetric, both branches narrow):
+      #   - Truthy is `receiver - X` (the receiver minus the guard type).
+      #     When the receiver does not contain X at all, this is the receiver
+      #     unchanged. When the receiver is fully contained in X, the truthy
+      #     branch is unreachable.
+      #   - Falsy is the guard type (the receiver intersected with X).
+      #     Unreachable when there is no overlap.
+      #   - No InsufficientTypeGuard: `is not` is always meaningful.
+      def guard_branch_types(operator, receiver_type, sub_type, error_node)
+        case operator
+        when "is"
+          if no_subtyping?(sub_type: sub_type, super_type: receiver_type) &&
+              no_subtyping?(sub_type: receiver_type, super_type: sub_type)
+            typing.add_error(Diagnostic::Ruby::InsufficientTypeGuard.new(node: error_node, super_type: receiver_type, sub_type: sub_type)) if error_node
+            return [nil, nil, false, false]
+          end
+          [sub_type, receiver_type, false, false]
+        when "is not"
+          truthy_t, falsy_t = type_guard_type_case_select(receiver_type, sub_type)
+          # type_guard_type_case_select returns [matches_guard, doesnt_match_guard].
+          # For `is not`, the predicate is true when guard does NOT match, so we
+          # swap the two and inherit the unreachability of each.
+          [
+            falsy_t,         # truthy branch: receiver minus guard
+            truthy_t,        # falsy branch: receiver intersected with guard
+            falsy_t.nil?,    # truthy unreachable when receiver is fully inside guard
+            truthy_t.nil?    # falsy unreachable when receiver has no overlap with guard
+          ]
+        else
+          raise "Unknown guard operator: #{operator}"
+        end
+      end
+
+      def guard_narrow_target(guard_type, receiver, arguments, send_node)
+        case guard_type.subject
+        when "self"
+          if receiver
+            rtype = factory.deep_expand_alias(typing.type_of(node: receiver)) || raise
+            if rtype.is_a?(AST::Types::Self) && self_type
+              [self_type, :self]
+            else
+              [rtype, receiver]
+            end
+          elsif self_type
+            [self_type, :self]
+          else
+            [nil, nil]
+          end
+        else
+          arg_node = send_node && find_argument_node(guard_type.subject, send_node, arguments)
+          if arg_node
+            arg_type = factory.deep_expand_alias(typing.type_of(node: arg_node)) || raise
+            [arg_type, arg_node]
+          else
+            [nil, nil]
+          end
+        end
+      end
+
+      # Resolve the AST node corresponding to a named parameter of the called
+      # method. Supports required/optional/trailing positional parameters and
+      # required/optional keyword parameters. Returns nil if the name cannot be
+      # matched to an argument at this call site.
+      def find_argument_node(name, send_node, arguments)
+        sym = name.to_sym
+        call = typing.call_of(node: send_node)
+        return nil unless call.is_a?(MethodCall::Typed)
+
+        call.method_decls.each do |decl|
+          function = decl.method_def.type.type
+          next unless function.is_a?(RBS::Types::Function)
+
+          positionals = function.required_positionals + function.optional_positionals + function.trailing_positionals
+          idx = positionals.index { |p| p.name == sym }
+          if idx
+            # The last argument is the keyword hash when keyword params exist;
+            # skip it when looking up positional args.
+            positional_count = arguments.size
+            last = arguments.last
+            if (function.required_keywords.any? || function.optional_keywords.any? || function.rest_keywords) &&
+                last && (last.type == :hash || last.type == :kwargs)
+              positional_count -= 1
+            end
+            return arguments[idx] if idx < positional_count
+          end
+
+          if function.required_keywords.key?(sym) || function.optional_keywords.key?(sym)
+            kwargs_hash = arguments.last
+            if kwargs_hash && (kwargs_hash.type == :hash || kwargs_hash.type == :kwargs)
+              kwargs_hash.children.each do |pair|
+                next unless pair.type == :pair
+                key, value = pair.children
+                return value if key && key.type == :sym && key.children[0] == sym
+              end
+            end
+          end
+        end
+
+        nil
+      rescue Typing::UnknownNodeError
+        nil
       end
 
       def evaluate_union_method_call(node:, type:, env:, receiver:, receiver_type:)

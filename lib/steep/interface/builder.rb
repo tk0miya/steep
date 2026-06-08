@@ -746,7 +746,8 @@ module Steep
         return method_type unless match
 
         subject = match[1] or raise
-        operator = match[2] or raise
+        op_raw = match[2] or raise
+        operator = AST::Types::Logic::Guard.normalize_operator(op_raw)
         type_name = match[3] or raise
 
         type = RBS::Parser.parse_type(type_name) rescue nil

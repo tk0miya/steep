@@ -2066,6 +2066,169 @@ class TypeCheckTest < Minitest::Test
     )
   end
 
+  def test_type_guard__arg_is_TYPE
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:x is Integer}
+            def int?: (untyped x) -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          o = Object.new
+          # @type var v: untyped
+          v = nil
+
+          if o.int?(v)
+            v + 1
+            v.reverse
+          else
+            v.reverse
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 7
+                character: 4
+              end:
+                line: 7
+                character: 11
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__arg_is_TYPE_keyword
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:value is Integer}
+            def int?: (value: untyped) -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          o = Object.new
+          # @type var v: untyped
+          v = nil
+
+          if o.int?(value: v)
+            v + 1
+            v.reverse
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 7
+                character: 4
+              end:
+                line: 7
+                character: 11
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__self_is_not_TYPE
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:self is not nil}
+            def present?: () -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          # @type var a: String?
+          a = (_ = nil)
+
+          if a.present?
+            a.upcase
+          else
+            a.upcase
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 7
+                character: 4
+              end:
+                line: 7
+                character: 10
+            severity: ERROR
+            message: Type `nil` does not have method `upcase`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__arg_is_not_TYPE
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:x is not nil}
+            def given?: (untyped? x) -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          o = Object.new
+          # @type var v: Integer?
+          v = nil
+
+          if o.given?(v)
+            v + 1
+          else
+            v + 1
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 8
+                character: 4
+              end:
+                line: 8
+                character: 5
+            severity: ERROR
+            message: Type `nil` does not have method `+`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
   def test_argument_error__unexpected_unexpected_positional_argument
     run_type_check_test(
       signatures: {

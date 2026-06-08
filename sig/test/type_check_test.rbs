@@ -124,6 +124,14 @@ class TypeCheckTest < Minitest::Test
 
   def test_type_guard__self_is_TYPE_explicit_self: () -> untyped
 
+  def test_type_guard__arg_is_TYPE: () -> untyped
+
+  def test_type_guard__arg_is_TYPE_keyword: () -> untyped
+
+  def test_type_guard__self_is_not_TYPE: () -> untyped
+
+  def test_type_guard__arg_is_not_TYPE: () -> untyped
+
   def test_type_guard__self_is_TYPE_module_include: () -> untyped
 
   def test_type_guard__self_is_TYPE_implicit_self: () -> untyped

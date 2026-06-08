@@ -195,8 +195,11 @@ Steep already understands core type guards such as `#is_a?`, `#kind_of?`, and `#
 This annotation lets you declare your own predicate methods so the type checker can narrow
 through them too.
 
-The annotation is attached to the method declaration in RBS. The predicate currently
-supports the `self is TYPE` form only.
+The annotation is attached to the method declaration in RBS. The predicate
+supports either `self is TYPE` (to narrow the receiver) or `arg is TYPE`
+(to narrow a named parameter of the predicate method). `is not` is also
+accepted for the negated form, useful for predicates like `present?` that
+assert the subject is not nil.
 
 #### Example
 
@@ -210,6 +213,15 @@ class Object
 
   %a{guard:self is singleton(String)}
   def self.string_class?: () -> bool
+
+  %a{guard:x is Integer}
+  def int_arg?: (untyped x) -> bool
+
+  %a{guard:value is String}
+  def str_kwarg?: (value: untyped) -> bool
+
+  %a{guard:self is not nil}
+  def present?: () -> bool
 end
 ```
 
@@ -222,11 +234,18 @@ if a.integer?
 else
   a.succ      # error: Object does not have `succ`
 end
+
+# @type var v: untyped
+v = nil
+
+if Object.new.int_arg?(v)
+  v + 1       # v is narrowed to Integer
+end
 ```
 
 #### Syntax
 
-* `%a{guard:` `self` `is` *type* `}`
+* `%a{guard:` (`self` | *param-name*) (`is` | `is not`) *type* `}`
 
 #### Notes
 
@@ -243,16 +262,21 @@ end
   end
   ```
 
-* The truthy branch is always narrowed to the annotated type. This is useful
-  when the guard type is a module or interface: even if the receiver is already
-  a subtype of the guard type (for example `Integer` is `Comparable`), the
-  truthy branch sees the guard type so only methods declared on it are
-  available. The falsy branch keeps the receiver's static type, because a
-  user-defined predicate may return false for arbitrary reasons.
-* Narrowing requires that the guard type and the receiver's static type have a
-  subtype relationship in either direction. When they do not (for example
-  guarding an `Integer` receiver to `String`), Steep reports
-  `Ruby::InsufficientTypeGuard`.
+* With `is`, the truthy branch is always narrowed to the annotated type. This
+  is useful when the guard type is a module or interface: even if the receiver
+  is already a subtype of the guard type (for example `Integer` is
+  `Comparable`), the truthy branch sees the guard type so only methods
+  declared on it are available. The falsy branch keeps the receiver's static
+  type, because a user-defined predicate may return false for arbitrary
+  reasons.
+* With `is not`, both branches are narrowed: the truthy branch sees the
+  receiver minus the guard type (for example `String?` minus `nil` is
+  `String`), and the falsy branch sees the intersection (typically the guard
+  type itself).
+* Narrowing with `is` requires that the guard type and the receiver's static
+  type have a subtype relationship in either direction. When they do not (for
+  example guarding an `Integer` receiver to `String`), Steep reports
+  `Ruby::InsufficientTypeGuard`. `is not` does not require such a relation.
 * Validation errors on the annotation itself are reported as
   `RBS::Signature::TypeGuardSyntaxError` (syntactic) or
   `RBS::Signature::InvalidTypeGuardType` (the type cannot be parsed or resolved).

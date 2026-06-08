@@ -85,6 +85,10 @@ class ValidationTest < Minitest::Test
 
   def test_validate_type_guard__unknown_type: () -> untyped
 
+  def test_validate_type_guard__unknown_arg: () -> untyped
+
+  def test_validate_type_guard__arg_subject: () -> untyped
+
   def test_validate__deprecated__type_name: () -> untyped
 
   def test_validate__deprecated__class: () -> untyped
