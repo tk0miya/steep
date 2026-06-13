@@ -76,6 +76,8 @@ module Steep
 
         def next: () -> [arg, PositionalArgs]?
 
+        def splat_node?: (Parser::AST::Node n) -> bool
+
         def uniform_type: () -> AST::Types::t?
 
         def consume: (Integer n, node: Parser::AST::Node) -> [

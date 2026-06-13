@@ -31,7 +31,7 @@ module Steep
 
           def node_type
             case node.type
-            when :splat
+            when :splat, :forwarded_restarg
               AST::Builtin::Array.instance_type(type)
             else
               type
@@ -115,32 +115,36 @@ module Steep
             nil
           when !node && !param
             nil
-          when node && node.type != :splat && param.is_a?(Interface::Function::Params::PositionalParams::Required)
+          when node && !splat_node?(node) && param.is_a?(Interface::Function::Params::PositionalParams::Required)
             [
               NodeParamPair.new(node: node, param: param),
               update(index: index+1, positional_params: positional_params&.tail)
             ]
-          when node && node.type != :splat && param.is_a?(Interface::Function::Params::PositionalParams::Optional)
+          when node && !splat_node?(node) && param.is_a?(Interface::Function::Params::PositionalParams::Optional)
             [
               NodeParamPair.new(node: node, param: param),
               update(index: index+1, positional_params: positional_params&.tail)
             ]
-          when node && node.type != :splat && param.is_a?(Interface::Function::Params::PositionalParams::Rest)
+          when node && !splat_node?(node) && param.is_a?(Interface::Function::Params::PositionalParams::Rest)
             [
               NodeParamPair.new(node: node, param: param),
               update(index: index+1)
             ]
-          when node && node.type != :splat && !param
+          when node && !splat_node?(node) && !param
             [
               UnexpectedArg.new(node: node),
               update(index: index + 1)
             ]
-          when node && node.type == :splat
+          when node && splat_node?(node)
             [
               SplatArg.new(node: node),
               self
             ]
           end
+        end
+
+        def splat_node?(n)
+          n.type == :splat || n.type == :forwarded_restarg
         end
 
         def uniform_type
@@ -382,7 +386,7 @@ module Steep
                   ]
                 end
               end
-            when :kwsplat
+            when :kwsplat, :forwarded_kwrestarg
               [
                 SplatArg.new(node: node),
                 self

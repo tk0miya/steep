@@ -139,7 +139,7 @@ module Steep
           loc = case node.type
                 when :pair
                   node.children[0].location.expression
-                when :kwsplat
+                when :kwsplat, :forwarded_kwrestarg
                   node.location.expression
                 else
                   raise

@@ -106,7 +106,19 @@ module Steep
       #
       attr_reader forward_arg_type: [Params, Block?] | true | nil
 
-      def initialize: (args: Array[Node], method_type: MethodType?, forward_arg_type: [Params, Block?] | true | nil) -> void
+      # The captured type of an anonymous `*` parameter, or `nil` if absent
+      attr_reader forward_rest_type: AST::Types::t | true | nil
+
+      # The captured type of an anonymous `**` parameter, or `nil` if absent
+      attr_reader forward_kwrest_type: AST::Types::t | true | nil
+
+      def initialize: (
+        args: Array[Node],
+        method_type: MethodType?,
+        forward_arg_type: [Params, Block?] | true | nil,
+        ?forward_rest_type: AST::Types::t | true | nil,
+        ?forward_kwrest_type: AST::Types::t | true | nil
+      ) -> void
 
       def []: (Symbol name) -> param
 
@@ -119,7 +131,11 @@ module Steep
 
       def each: () { (Symbol, AST::Types::t) -> void } -> void
 
-      def update: (?forward_arg_type: [Params, Block?] | true | nil) -> MethodParams
+      def update: (
+        ?forward_arg_type: [Params, Block?] | true | nil,
+        ?forward_rest_type: AST::Types::t | true | nil,
+        ?forward_kwrest_type: AST::Types::t | true | nil
+      ) -> MethodParams
 
       def self.empty: (node: Node) -> MethodParams
 

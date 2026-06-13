@@ -3728,6 +3728,191 @@ EOF
     end
   end
 
+  def test_anonymous_kwrest_forwarding_to_positional_hash
+    with_checker <<-EOF do |checker|
+class AnonKwrestPositional
+  def call: (**::Integer) -> void
+  def accept: (?::Hash[untyped, untyped]) -> void
+end
+    EOF
+      source = parse_ruby(<<EOF)
+class AnonKwrestPositional
+  def call(**)
+    accept(**)
+  end
+
+  def accept(options = {})
+  end
+end
+EOF
+
+      with_standard_construction(checker, source) do |construction, typing|
+        construction.synthesize(source.node)
+        assert_no_error typing
+      end
+    end
+  end
+
+  def test_anonymous_kwrest_forwarding_matching_kwrest
+    with_checker <<-EOF do |checker|
+class AnonKwrestMatching
+  def call: (**::Integer) -> void
+  def forward: (**::Integer) -> void
+end
+    EOF
+      source = parse_ruby(<<EOF)
+class AnonKwrestMatching
+  def call(**)
+    forward(**)
+  end
+
+  def forward(**)
+  end
+end
+EOF
+
+      with_standard_construction(checker, source) do |construction, typing|
+        construction.synthesize(source.node)
+        assert_no_error typing
+      end
+    end
+  end
+
+  def test_anonymous_kwrest_forwarding_value_type_mismatch
+    with_checker <<-EOF do |checker|
+class AnonKwrestMismatch
+  def call: (**::Integer) -> void
+  def forward: (**::String) -> void
+end
+    EOF
+      source = parse_ruby(<<EOF)
+class AnonKwrestMismatch
+  def call(**)
+    forward(**)
+  end
+
+  def forward(**)
+  end
+end
+EOF
+
+      with_standard_construction(checker, source) do |construction, typing|
+        construction.synthesize(source.node)
+        assert_typing_error(typing, size: 1) do |errors|
+          assert_any errors do |error|
+            error.is_a?(Diagnostic::Ruby::ArgumentTypeMismatch)
+          end
+        end
+      end
+    end
+  end
+
+  def test_anonymous_kwrest_forwarding_unexpected_keyword
+    with_checker <<-EOF do |checker|
+class AnonKwrestExtra
+  def call: (kw1: ::Integer, kw2: ::Float, kw3: ::String) -> void
+  def forward: (kw1: ::Integer, kw2: ::Float) -> void
+end
+    EOF
+      source = parse_ruby(<<EOF)
+class AnonKwrestExtra
+  def call(**)
+    forward(**)
+  end
+
+  def forward(kw1:, kw2:)
+  end
+end
+EOF
+
+      with_standard_construction(checker, source) do |construction, typing|
+        construction.synthesize(source.node)
+        assert_any typing.errors do |error|
+          error.is_a?(Diagnostic::Ruby::UnexpectedKeywordArgument)
+        end
+      end
+    end
+  end
+
+  def test_anonymous_kwrest_forwarding_missing_keyword
+    with_checker <<-EOF do |checker|
+class AnonKwrestMissing
+  def call: (kw1: ::Integer) -> void
+  def forward: (kw1: ::Integer, kw2: ::Float) -> void
+end
+    EOF
+      source = parse_ruby(<<EOF)
+class AnonKwrestMissing
+  def call(**)
+    forward(**)
+  end
+
+  def forward(kw1:, kw2:)
+  end
+end
+EOF
+
+      with_standard_construction(checker, source) do |construction, typing|
+        construction.synthesize(source.node)
+        assert_any typing.errors do |error|
+          error.is_a?(Diagnostic::Ruby::InsufficientKeywordArguments)
+        end
+      end
+    end
+  end
+
+  def test_anonymous_rest_forwarding_matching_rest
+    with_checker <<-EOF do |checker|
+class AnonRestMatching
+  def call: (*::Integer) -> void
+  def forward: (*::Integer) -> void
+end
+    EOF
+      source = parse_ruby(<<EOF)
+class AnonRestMatching
+  def call(*)
+    forward(*)
+  end
+
+  def forward(*)
+  end
+end
+EOF
+
+      with_standard_construction(checker, source) do |construction, typing|
+        construction.synthesize(source.node)
+        assert_no_error typing
+      end
+    end
+  end
+
+  def test_anonymous_rest_forwarding_element_type_mismatch
+    with_checker <<-EOF do |checker|
+class AnonRestMismatch
+  def call: (*::Integer) -> void
+  def forward: (*::String) -> void
+end
+    EOF
+      source = parse_ruby(<<EOF)
+class AnonRestMismatch
+  def call(*)
+    forward(*)
+  end
+
+  def forward(*)
+  end
+end
+EOF
+
+      with_standard_construction(checker, source) do |construction, typing|
+        construction.synthesize(source.node)
+        assert_any typing.errors do |error|
+          error.is_a?(Diagnostic::Ruby::ArgumentTypeMismatch)
+        end
+      end
+    end
+  end
+
   def test_splat_kw_args
     with_checker <<-EOF do |checker|
 class KWArgTest

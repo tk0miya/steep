@@ -230,6 +230,8 @@ module Steep
         return_type: annots.return_type || method_type&.type&.return_type || AST::Builtin.any_type,
         super_method: super_method,
         forward_arg_type: method_params.forward_arg_type,
+        forward_rest_type: method_params.forward_rest_type,
+        forward_kwrest_type: method_params.forward_kwrest_type,
         block_param_name: block_param_name
       )
 
@@ -2702,6 +2704,29 @@ module Steep
         when :forwarded_args, :forward_arg
           add_typing(node, type: AST::Builtin.any_type)
 
+        when :forwarded_restarg
+          type =
+            case t = method_context&.forward_rest_type
+            when nil, true
+              AST::Builtin::Array.instance_type(AST::Builtin.any_type)
+            else
+              t
+            end
+          add_typing(node, type: type)
+
+        when :forwarded_kwrestarg
+          type =
+            case t = method_context&.forward_kwrest_type
+            when nil, true
+              AST::Builtin::Hash.instance_type(
+                AST::Builtin::Symbol.instance_type,
+                AST::Builtin.any_type
+              )
+            else
+              t
+            end
+          add_typing(node, type: type)
+
         else
           typing.add_error(Diagnostic::Ruby::UnsupportedSyntax.new(node: node))
           add_typing(node, type: AST::Builtin.any_type)
@@ -3863,11 +3888,21 @@ module Steep
           end
 
         when TypeInference::SendArgs::PositionalArgs::SplatArg
-          arg_type, _ =
-            constr
-              .with_child_typing()
-              .try_tuple_type!(arg.node.children[0])
-          arg.type = arg_type
+          if arg.node.type == :forwarded_restarg
+            arg.type =
+              case t = method_context&.forward_rest_type
+              when nil, true
+                AST::Builtin::Array.instance_type(AST::Builtin.any_type)
+              else
+                t
+              end
+          else
+            arg_type, _ =
+              constr
+                .with_child_typing()
+                .try_tuple_type!(arg.node.children[0])
+            arg.type = arg_type
+          end
 
         when TypeInference::SendArgs::PositionalArgs::MissingArg
           # ignore
@@ -3897,15 +3932,28 @@ module Steep
           end
 
         when TypeInference::SendArgs::KeywordArgs::SplatArg
-          type, _ = bypass_splat(arg.node) do |sp_node|
-            if sp_node.type == :hash
-              pair = constr.type_hash_record(sp_node, nil) and break pair
+          if arg.node.type == :forwarded_kwrestarg
+            arg.type =
+              case t = method_context&.forward_kwrest_type
+              when nil, true
+                AST::Builtin::Hash.instance_type(
+                  AST::Builtin::Symbol.instance_type,
+                  AST::Builtin.any_type
+                )
+              else
+                t
+              end
+          else
+            type, _ = bypass_splat(arg.node) do |sp_node|
+              if sp_node.type == :hash
+                pair = constr.type_hash_record(sp_node, nil) and break pair
+              end
+
+              constr.synthesize(sp_node)
             end
 
-            constr.synthesize(sp_node)
+            arg.type = type
           end
-
-          arg.type = type
 
         when TypeInference::SendArgs::KeywordArgs::MissingKeyword
           # ignore
@@ -5247,6 +5295,25 @@ module Steep
                   value_types << type.args.fetch(1)
                 end
               end
+            end
+          when :forwarded_kwrestarg
+            case t = method_context&.forward_kwrest_type
+            when AST::Types::Record
+              t.elements.each do |key, value|
+                key_types << AST::Types::Literal.new(value: key)
+                value_types << value
+              end
+            when AST::Types::Name::Instance
+              if AST::Builtin::Hash.instance_type?(t)
+                key_types << t.args.fetch(0)
+                value_types << t.args.fetch(1)
+              else
+                key_types << AST::Builtin::Symbol.instance_type
+                value_types << AST::Builtin.any_type
+              end
+            else
+              key_types << AST::Builtin::Symbol.instance_type
+              value_types << AST::Builtin.any_type
             end
           else
             raise

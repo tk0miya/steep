@@ -144,13 +144,17 @@ module Steep
       attr_reader :params
       attr_reader :errors
       attr_reader :forward_arg_type
+      attr_reader :forward_rest_type
+      attr_reader :forward_kwrest_type
 
-      def initialize(args:, method_type:, forward_arg_type:)
+      def initialize(args:, method_type:, forward_arg_type:, forward_rest_type: nil, forward_kwrest_type: nil)
         @args = args
         @method_type = method_type
         @params = {}
         @errors = []
         @forward_arg_type = forward_arg_type
+        @forward_rest_type = forward_rest_type
+        @forward_kwrest_type = forward_kwrest_type
       end
 
       def [](name)
@@ -183,8 +187,14 @@ module Steep
         end
       end
 
-      def update(forward_arg_type: self.forward_arg_type)
-        MethodParams.new(args: args, method_type: method_type, forward_arg_type: forward_arg_type)
+      def update(forward_arg_type: self.forward_arg_type, forward_rest_type: self.forward_rest_type, forward_kwrest_type: self.forward_kwrest_type)
+        MethodParams.new(
+          args: args,
+          method_type: method_type,
+          forward_arg_type: forward_arg_type,
+          forward_rest_type: forward_rest_type,
+          forward_kwrest_type: forward_kwrest_type
+        )
       end
 
       def self.empty(node:)
@@ -242,6 +252,9 @@ module Steep
         instance = new(args: original, method_type: method_type, forward_arg_type: nil)
 
         unless method_type.type.params
+          forward_rest_type = nil #: AST::Types::t | true | nil
+          forward_kwrest_type = nil #: AST::Types::t | true | nil
+
           args.each do |arg|
             case arg.type
             when :arg
@@ -252,9 +265,13 @@ module Steep
               instance.params[name] = PositionalParameter.new(name: name, type: AST::Builtin.any_type, node: arg)
             when :forward_arg
               return instance.update(forward_arg_type: true)
+            when :restarg
+              forward_rest_type = true unless arg.children[0]
+            when :kwrestarg
+              forward_kwrest_type = true unless arg.children[0]
             end
           end
-          return instance
+          return instance.update(forward_rest_type: forward_rest_type, forward_kwrest_type: forward_kwrest_type)
         end
 
         positional_params = method_type.type.params.positional_params
@@ -372,6 +389,12 @@ module Steep
 
           type = rest_types.empty? ? nil : AST::Types::Union.build(types: rest_types)
 
+          unless name
+            instance = instance.update(
+              forward_rest_type: AST::Builtin::Array.instance_type(type || AST::Builtin.any_type)
+            )
+          end
+
           method_param = PositionalRestParameter.new(name: name, type: type, node: arg)
           instance.params[name] = method_param
           if has_error
@@ -466,10 +489,21 @@ module Steep
         if (arg = args.first) && arg.type == :kwrestarg
           name = arg.children[0]
           rest_types = [] #: Array[AST::Types::t]
+          # @type var record_elements: Hash[Symbol, AST::Types::t]
+          record_elements = {}
+          # @type var record_required: Set[Symbol]
+          record_required = Set.new
           has_error = false
 
           keywords.each do |keyword|
-            rest_types << (keyword_params.requireds[keyword] || keyword_params.optionals.fetch(keyword))
+            if t = keyword_params.requireds[keyword]
+              rest_types << t
+              record_elements[keyword] = t
+              record_required << keyword
+            elsif t = keyword_params.optionals[keyword]
+              rest_types << t
+              record_elements[keyword] = t
+            end
             has_error = true
           end
           keywords.clear
@@ -481,6 +515,25 @@ module Steep
           end
 
           type = rest_types.empty? ? nil : AST::Types::Union.build(types: rest_types)
+
+          unless name
+            instance = instance.update(
+              forward_kwrest_type:
+                if keyword_params.rest
+                  AST::Builtin::Hash.instance_type(
+                    AST::Builtin::Symbol.instance_type,
+                    type || AST::Builtin.any_type
+                  )
+                elsif record_elements.empty?
+                  AST::Builtin::Hash.instance_type(
+                    AST::Builtin::Symbol.instance_type,
+                    AST::Builtin.any_type
+                  )
+                else
+                  AST::Types::Record.new(elements: record_elements, required_keys: record_required)
+                end
+            )
+          end
 
           method_param = KeywordRestParameter.new(name: name, type: type, node: arg)
           instance.params[name] = method_param
