@@ -73,6 +73,10 @@ module Steep
       #
       def decompose_value: (Parser::AST::Node node) -> [Parser::AST::Node, Set[Symbol]]
 
+      def type_case_select: (AST::Types::t `type`, RBS::TypeName klass) -> [AST::Types::t?, AST::Types::t?]
+
+      def type_case_select0: (AST::Types::t `type`, RBS::TypeName klass) -> [Array[AST::Types::t], Array[AST::Types::t]]
+
       private
 
       # Assign local variables included in the assignment node and masgn node
@@ -99,10 +103,6 @@ module Steep
       # ```
       #
       def literal_var_type_case_select: (Parser::AST::Node value_node, AST::Types::t arg_type, ?for_receiver: bool) -> [Array[AST::Types::t], Array[AST::Types::t]]?
-
-      def type_case_select: (AST::Types::t `type`, RBS::TypeName klass) -> [AST::Types::t?, AST::Types::t?]
-
-      def type_case_select0: (AST::Types::t `type`, RBS::TypeName klass) -> [Array[AST::Types::t], Array[AST::Types::t]]
 
       def try_convert: (AST::Types::t, Symbol) -> AST::Types::t?
 

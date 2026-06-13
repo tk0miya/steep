@@ -4871,7 +4871,8 @@ module Steep
         parts = decompose_array_pattern_type(scrutinee_type, leading.size, !rest_node.nil?, trailing.size)
 
         leading.each_with_index do |child, i|
-          constr, b = constr.check_pattern(child, parts[:leading][i])
+          leading_type = parts[:leading][i] or raise
+          constr, b = constr.check_pattern(child, leading_type)
           bindings.merge!(b)
         end
 
@@ -4881,8 +4882,10 @@ module Steep
         end
 
         trailing.each_with_index do |child, i|
-          constr, b = constr.check_pattern(child, parts[:trailing][i])
-          bindings.merge!(b)
+          trailing_type = parts[:trailing][i] or raise
+          pair = constr.check_pattern(child, trailing_type)
+          constr = pair[0]
+          bindings.merge!(pair[1])
         end
 
         [constr, bindings]
@@ -5119,9 +5122,9 @@ module Steep
           rest_size = types.size - leading_count - trailing_count
           rest_types =
             if rest_size > 0
-              types[leading_count, rest_size] || []
+              types[leading_count, rest_size] || [] #: Array[AST::Types::t]
             else
-              []
+              [] #: Array[AST::Types::t]
             end
           rest_type = AST::Types::Tuple.new(types: rest_types)
           trailing_types = Array.new(trailing_count) {|i| types[types.size - trailing_count + i] || AST::Builtin.any_type }
@@ -5149,9 +5152,9 @@ module Steep
       when AST::Types::Union
         decompositions = scrutinee_type.types.map {|t| decompose_array_pattern_type(t, leading_count, has_rest, trailing_count) }
         {
-          leading: Array.new(leading_count) {|i| union_type_unify(*decompositions.map {|d| d[:leading][i] }) },
+          leading: Array.new(leading_count) {|i| union_type_unify(*decompositions.map {|d| d[:leading][i] || AST::Builtin.any_type }) },
           rest: has_rest ? union_type_unify(*decompositions.map {|d| d[:rest] || AST::Builtin.any_type }) : nil,
-          trailing: Array.new(trailing_count) {|i| union_type_unify(*decompositions.map {|d| d[:trailing][i] }) }
+          trailing: Array.new(trailing_count) {|i| union_type_unify(*decompositions.map {|d| d[:trailing][i] || AST::Builtin.any_type }) }
         }
 
       else

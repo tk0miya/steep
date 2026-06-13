@@ -374,6 +374,40 @@ module Steep
 
     def union_type: (*AST::Types::t? types) -> AST::Types::t
 
+    type pattern_bindings = Hash[Symbol, AST::Types::t]
+
+    type array_pattern_decomposition = { leading: Array[AST::Types::t], rest: AST::Types::t?, trailing: Array[AST::Types::t] }
+
+    def check_pattern: (Parser::AST::Node pattern_node, AST::Types::t scrutinee_type) -> [TypeConstruction, pattern_bindings]
+
+    def narrow_scrutinee_via_pattern: (Parser::AST::Node pattern_node, AST::Types::t scrutinee_type) -> AST::Types::t
+
+    def narrow_scrutinee_by_const: (AST::Types::t scrutinee_type, AST::Types::t const_type) -> AST::Types::t
+
+    def subtract_scrutinee_via_pattern: (Parser::AST::Node pattern_node, AST::Types::t scrutinee_type) -> AST::Types::t
+
+    def subtract_scrutinee_by_const: (AST::Types::t scrutinee_type, AST::Types::t const_type) -> AST::Types::t
+
+    def nil_like_type?: (AST::Types::t type) -> bool
+
+    def narrow_to_nil: (AST::Types::t scrutinee_type) -> AST::Types::t
+
+    def subtract_nil: (AST::Types::t scrutinee_type) -> AST::Types::t
+
+    def decompose_array_pattern_type: (AST::Types::t scrutinee_type, Integer leading_count, bool has_rest, Integer trailing_count) -> array_pattern_decomposition
+
+    def fallback_array_pattern_decomposition: (Integer leading_count, bool has_rest, Integer trailing_count) -> array_pattern_decomposition
+
+    def decompose_find_pattern_type: (AST::Types::t scrutinee_type) -> [AST::Types::t, AST::Types::t]
+
+    def hash_pattern_value_type: (AST::Types::t scrutinee_type, Symbol key) -> AST::Types::t
+
+    def hash_pattern_any_value_type: (AST::Types::t scrutinee_type) -> AST::Types::t
+
+    def hash_pattern_rest_type: (AST::Types::t scrutinee_type) -> AST::Types::t
+
+    def lookup_pattern_method_return_type: (AST::Types::t type, Symbol method_name) -> AST::Types::t?
+
     # Returns union type of given types
     #
     # If one of the types is a subtype of another type, the _subtype_ will be ignored.
