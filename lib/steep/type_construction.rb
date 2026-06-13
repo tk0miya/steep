@@ -4801,39 +4801,91 @@ module Steep
       when :match_rest
         var_node = pattern_node.children[0]
         if var_node
-          rest_type = AST::Builtin::Array.instance_type(AST::Builtin.any_type)
-          constr, b = constr.check_pattern(var_node, rest_type)
+          constr, b = constr.check_pattern(var_node, scrutinee_type)
           bindings.merge!(b)
         end
         [constr, bindings]
 
-      when :array_pattern, :array_pattern_with_tail, :find_pattern
-        pattern_node.children.each do |child|
-          constr, b = constr.check_pattern(child, AST::Builtin.any_type)
+      when :array_pattern, :array_pattern_with_tail
+        children = pattern_node.children
+        leading = [] #: Array[Parser::AST::Node]
+        rest_node = nil #: Parser::AST::Node?
+        trailing = [] #: Array[Parser::AST::Node]
+
+        children.each do |child|
+          if child.type == :match_rest
+            rest_node = child
+          elsif rest_node.nil?
+            leading << child
+          else
+            trailing << child
+          end
+        end
+
+        parts = decompose_array_pattern_type(scrutinee_type, leading.size, !rest_node.nil?, trailing.size)
+
+        leading.each_with_index do |child, i|
+          constr, b = constr.check_pattern(child, parts[:leading][i])
           bindings.merge!(b)
         end
+
+        if rest_node
+          constr, b = constr.check_pattern(rest_node, parts[:rest] || AST::Builtin::Array.instance_type(AST::Builtin.any_type))
+          bindings.merge!(b)
+        end
+
+        trailing.each_with_index do |child, i|
+          constr, b = constr.check_pattern(child, parts[:trailing][i])
+          bindings.merge!(b)
+        end
+
+        [constr, bindings]
+
+      when :find_pattern
+        children = pattern_node.children
+        leading_rest = children.first or raise
+        trailing_rest = children.last or raise
+        middle = children[1..-2] || []
+
+        element_type, rest_type = decompose_find_pattern_type(scrutinee_type)
+
+        constr, b = constr.check_pattern(leading_rest, rest_type)
+        bindings.merge!(b)
+
+        middle.each do |child|
+          constr, b = constr.check_pattern(child, element_type)
+          bindings.merge!(b)
+        end
+
+        constr, b = constr.check_pattern(trailing_rest, rest_type)
+        bindings.merge!(b)
+
         [constr, bindings]
 
       when :hash_pattern
         pattern_node.children.each do |child|
           case child.type
           when :pair
-            _, val_pat = child.children
-            constr, b = constr.check_pattern(val_pat, AST::Builtin.any_type)
+            key_node, val_pat = child.children
+            value_type =
+              if key_node.type == :sym
+                hash_pattern_value_type(scrutinee_type, key_node.children[0])
+              else
+                hash_pattern_any_value_type(scrutinee_type)
+              end
+            constr, b = constr.check_pattern(val_pat, value_type)
             bindings.merge!(b)
           when :match_var
             name = child.children[0]
-            bindings[name] = AST::Builtin.any_type
+            value_type = hash_pattern_value_type(scrutinee_type, name)
+            bindings[name] = value_type
             constr = constr.update_type_env do |env|
-              env.assign_local_variable(name, AST::Builtin.any_type, nil)
+              env.assign_local_variable(name, value_type, nil)
             end
           when :match_rest
             var_node = child.children[0]
             if var_node
-              rest_type = AST::Builtin::Hash.instance_type(
-                AST::Builtin::Symbol.instance_type,
-                AST::Builtin.any_type
-              )
+              rest_type = hash_pattern_rest_type(scrutinee_type)
               constr, b = constr.check_pattern(var_node, rest_type)
               bindings.merge!(b)
             end
@@ -4884,6 +4936,163 @@ module Steep
           _, constr = constr.synthesize(child).to_ary
         end
         [constr, bindings]
+      end
+    end
+
+    # Compute element types for an `:array_pattern` against `scrutinee_type`.
+    #
+    # Returns `{ leading:, rest:, trailing: }`. `rest` is `nil` when the pattern has no
+    # `match_rest`. Distributes over unions; falls back to `any` for unknown types.
+    def decompose_array_pattern_type(scrutinee_type, leading_count, has_rest, trailing_count)
+      case scrutinee_type
+      when AST::Types::Tuple
+        types = scrutinee_type.types
+
+        leading_types = Array.new(leading_count) {|i| types[i] || AST::Builtin.any_type }
+
+        if has_rest
+          rest_size = types.size - leading_count - trailing_count
+          rest_types =
+            if rest_size > 0
+              types[leading_count, rest_size] || []
+            else
+              []
+            end
+          rest_type = AST::Types::Tuple.new(types: rest_types)
+          trailing_types = Array.new(trailing_count) {|i| types[types.size - trailing_count + i] || AST::Builtin.any_type }
+        else
+          rest_type = nil
+          trailing_types = Array.new(trailing_count) {|i| types[leading_count + i] || AST::Builtin.any_type }
+        end
+
+        { leading: leading_types, rest: rest_type, trailing: trailing_types }
+
+      when AST::Types::Name::Instance
+        if AST::Builtin::Array.instance_type?(scrutinee_type)
+          element_type = scrutinee_type.args[0] || AST::Builtin.any_type
+          {
+            leading: Array.new(leading_count) { element_type },
+            rest: has_rest ? AST::Builtin::Array.instance_type(element_type) : nil,
+            trailing: Array.new(trailing_count) { element_type }
+          }
+        else
+          fallback_array_pattern_decomposition(leading_count, has_rest, trailing_count)
+        end
+
+      when AST::Types::Union
+        decompositions = scrutinee_type.types.map {|t| decompose_array_pattern_type(t, leading_count, has_rest, trailing_count) }
+        {
+          leading: Array.new(leading_count) {|i| union_type_unify(*decompositions.map {|d| d[:leading][i] }) },
+          rest: has_rest ? union_type_unify(*decompositions.map {|d| d[:rest] || AST::Builtin.any_type }) : nil,
+          trailing: Array.new(trailing_count) {|i| union_type_unify(*decompositions.map {|d| d[:trailing][i] }) }
+        }
+
+      else
+        fallback_array_pattern_decomposition(leading_count, has_rest, trailing_count)
+      end
+    end
+
+    def fallback_array_pattern_decomposition(leading_count, has_rest, trailing_count)
+      {
+        leading: Array.new(leading_count) { AST::Builtin.any_type },
+        rest: has_rest ? AST::Builtin::Array.instance_type(AST::Builtin.any_type) : nil,
+        trailing: Array.new(trailing_count) { AST::Builtin.any_type }
+      }
+    end
+
+    # Compute `[element_type, rest_type]` for a `:find_pattern` against `scrutinee_type`.
+    def decompose_find_pattern_type(scrutinee_type)
+      case scrutinee_type
+      when AST::Types::Tuple
+        element_type =
+          if scrutinee_type.types.empty?
+            AST::Builtin.any_type
+          else
+            union_type_unify(*scrutinee_type.types)
+          end
+        [element_type, AST::Builtin::Array.instance_type(element_type)]
+
+      when AST::Types::Name::Instance
+        if AST::Builtin::Array.instance_type?(scrutinee_type)
+          element_type = scrutinee_type.args[0] || AST::Builtin.any_type
+          [element_type, AST::Builtin::Array.instance_type(element_type)]
+        else
+          [AST::Builtin.any_type, AST::Builtin::Array.instance_type(AST::Builtin.any_type)]
+        end
+
+      when AST::Types::Union
+        results = scrutinee_type.types.map {|t| decompose_find_pattern_type(t) }
+        [
+          union_type_unify(*results.map {|e, _| e }),
+          union_type_unify(*results.map {|_, r| r })
+        ]
+
+      else
+        [AST::Builtin.any_type, AST::Builtin::Array.instance_type(AST::Builtin.any_type)]
+      end
+    end
+
+    # Compute the value type for `key` (Symbol) in a `:hash_pattern` against `scrutinee_type`.
+    def hash_pattern_value_type(scrutinee_type, key)
+      case scrutinee_type
+      when AST::Types::Record
+        scrutinee_type.elements[key] || AST::Builtin.any_type
+      when AST::Types::Name::Instance
+        if AST::Builtin::Hash.instance_type?(scrutinee_type)
+          scrutinee_type.args[1] || AST::Builtin.any_type
+        else
+          AST::Builtin.any_type
+        end
+      when AST::Types::Union
+        union_type_unify(*scrutinee_type.types.map {|t| hash_pattern_value_type(t, key) })
+      else
+        AST::Builtin.any_type
+      end
+    end
+
+    # Used when the hash pattern key isn't a literal symbol — fall back to a value type
+    # that covers any key for the scrutinee.
+    def hash_pattern_any_value_type(scrutinee_type)
+      case scrutinee_type
+      when AST::Types::Record
+        if scrutinee_type.elements.empty?
+          AST::Builtin.any_type
+        else
+          union_type_unify(*scrutinee_type.elements.values)
+        end
+      when AST::Types::Name::Instance
+        if AST::Builtin::Hash.instance_type?(scrutinee_type)
+          scrutinee_type.args[1] || AST::Builtin.any_type
+        else
+          AST::Builtin.any_type
+        end
+      when AST::Types::Union
+        union_type_unify(*scrutinee_type.types.map {|t| hash_pattern_any_value_type(t) })
+      else
+        AST::Builtin.any_type
+      end
+    end
+
+    def hash_pattern_rest_type(scrutinee_type)
+      case scrutinee_type
+      when AST::Types::Record
+        value_type =
+          if scrutinee_type.elements.empty?
+            AST::Builtin.any_type
+          else
+            union_type_unify(*scrutinee_type.elements.values)
+          end
+        AST::Builtin::Hash.instance_type(AST::Builtin::Symbol.instance_type, value_type)
+      when AST::Types::Name::Instance
+        if AST::Builtin::Hash.instance_type?(scrutinee_type)
+          scrutinee_type
+        else
+          AST::Builtin::Hash.instance_type(AST::Builtin::Symbol.instance_type, AST::Builtin.any_type)
+        end
+      when AST::Types::Union
+        union_type_unify(*scrutinee_type.types.map {|t| hash_pattern_rest_type(t) })
+      else
+        AST::Builtin::Hash.instance_type(AST::Builtin::Symbol.instance_type, AST::Builtin.any_type)
       end
     end
 
