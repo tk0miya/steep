@@ -300,6 +300,43 @@ end
   end
   ```
 
+* `value is_a klass` narrows `value` based on the *static type of another
+  argument* at the call site. This is the user-defined counterpart of
+  `Object#is_a?` for wrapper methods that take a class object and a value:
+
+  ```rbs
+  class Helper
+    %a{guard:value is_a klass}
+    def of_type?: (Module klass, untyped value) -> bool
+  end
+  ```
+
+  ```ruby
+  if Helper.new.of_type?(Integer, x)
+    x + 1   # x narrowed to Integer
+  end
+  ```
+
+  Narrowing fires only when the class argument's static type is a
+  `singleton(...)`. When the argument is a plain `Module`/`Class` value,
+  narrowing is skipped.
+
+  The class source can also be `self`, which uses the receiver's static
+  type. This is the natural shape for wrapping `Module#===`:
+
+  ```rbs
+  class Module
+    %a{guard:arg is_a self}
+    def my_eq3: (untyped arg) -> bool
+  end
+  ```
+
+  ```ruby
+  if Integer.my_eq3(x)
+    x + 1   # x narrowed to Integer
+  end
+  ```
+
 * Guards on `===` integrate with `case/when`. A `when m` clause is treated as
   `m === case_value`, and the user-defined guard on `===` narrows the case
   value inside the branch:

@@ -744,6 +744,15 @@ module Steep
       end
 
       def replace_guard_method(definition, method_def, method_type)
+        # is_a-form (`x is_a klass`) is matched before the static `is`/`is not`
+        # form so that the underscore-bearing operator wins regex disambiguation.
+        if (m = method_def.member_annotations.filter_map { AST::Types::Logic::IsAGuard::PATTERN.match(_1.string) }.first)
+          subject = m[1] or raise
+          arg = m[2] or raise
+          guard = AST::Types::Logic::IsAGuard.new(subject: subject, arg: arg)
+          return method_type.with(type: method_type.type.with(return_type: guard))
+        end
+
         match = method_def.member_annotations.filter_map { AST::Types::Logic::Guard::PATTERN.match(_1.string) }.first
         return method_type unless match
 

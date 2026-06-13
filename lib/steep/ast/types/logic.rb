@@ -99,6 +99,30 @@ module Steep
           end
         end
 
+        # A type for `is_a`-style guard: narrowing target is determined by the
+        # static type of another argument (typically a `Module`/`singleton(...)`
+        # value). Lets users wrap `Object#is_a?`-like predicates while keeping
+        # narrowing tied to the call-site argument.
+        class IsAGuard < Base
+          PATTERN = /\Aguard:\s*(\w+)\s+is_a\s+(\w+)\s*\Z/
+
+          attr_reader :subject
+          attr_reader :arg
+
+          def initialize(subject:, arg:)
+            @subject = subject
+            @arg = arg
+          end
+
+          def ==(other)
+            super && subject == other.subject && arg == other.arg
+          end
+
+          def hash
+            self.class.hash ^ subject.hash ^ arg.hash
+          end
+        end
+
         # A type for assertion-style guard: methods that narrow the subject in
         # the caller's scope after returning normally (e.g. raise on mismatch).
         class Assert < Base

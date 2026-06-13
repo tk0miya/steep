@@ -290,6 +290,11 @@ module Steep
       end
 
       def validate_type_guard_annotation(definition, method_type, annotation)
+        if (m = AST::Types::Logic::IsAGuard::PATTERN.match(annotation.string))
+          validate_type_isa_guard_annotation(definition, method_type, annotation, m)
+          return
+        end
+
         match = AST::Types::Logic::Guard::PATTERN.match(annotation.string)
         unless match
           @errors << Diagnostic::Signature::TypeGuardSyntaxError.new(annotation.string, location: annotation.location)
@@ -304,6 +309,22 @@ module Steep
 
         type_name = match[3] or raise
         validate_guard_type(definition, method_type, annotation, type_name)
+      end
+
+      def validate_type_isa_guard_annotation(definition, method_type, annotation, match)
+        subject = match[1] or raise
+        arg = match[2] or raise
+
+        unless subject == "self" || guard_subject_param?(method_type, subject)
+          @errors << Diagnostic::Signature::TypeGuardSyntaxError.new(annotation.string, location: annotation.location)
+          return
+        end
+
+        # `arg` may be either "self" (use the receiver's static type) or a
+        # parameter name whose static type is examined at the call site.
+        unless arg == "self" || guard_subject_param?(method_type, arg)
+          @errors << Diagnostic::Signature::TypeGuardSyntaxError.new(annotation.string, location: annotation.location)
+        end
       end
 
       def validate_type_assert_annotation(definition, method_type, annotation)

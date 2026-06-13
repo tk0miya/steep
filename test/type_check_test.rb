@@ -2553,6 +2553,122 @@ class TypeCheckTest < Minitest::Test
     )
   end
 
+  def test_type_guard__is_a_arg_form
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Helper
+            %a{guard:value is_a klass}
+            def of_type?: (Module klass, untyped value) -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          h = Helper.new
+          # @type var x: untyped
+          x = nil
+
+          if h.of_type?(Integer, x)
+            x + 1
+            x.reverse
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 7
+                character: 4
+              end:
+                line: 7
+                character: 11
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__is_a_self_form
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{guard:self is_a klass}
+            def my_is_a?: (Module klass) -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          o = Object.new
+          if o.my_is_a?(Integer)
+            o + 1
+            o.reverse
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 4
+                character: 4
+              end:
+                line: 4
+                character: 11
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__is_a_arg_is_self
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Module
+            %a{guard:arg is_a self}
+            def my_eq3: (untyped arg) -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          # @type var x: untyped
+          x = nil
+
+          if Integer.my_eq3(x)
+            x + 1
+            x.reverse
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 6
+                character: 4
+              end:
+                line: 6
+                character: 11
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
   def test_argument_error__unexpected_unexpected_positional_argument
     run_type_check_test(
       signatures: {

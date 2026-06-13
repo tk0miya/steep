@@ -492,6 +492,9 @@ module Steep
 
             [truthy_result, falsy_result]
           end
+
+        when AST::Types::Logic::IsAGuard
+          evaluate_isa_guard(type, receiver, arguments, node, env)
         end
       end
 
@@ -538,6 +541,86 @@ module Steep
         else
           raise "Unknown guard operator: #{operator}"
         end
+      end
+
+      # `value is_a klass` form: the narrowing target type is derived from the
+      # static type of the `klass` argument at the call site. Mirrors the
+      # semantics of built-in `Object#is_a?` but lets the subject (the value
+      # being narrowed) be any parameter, not just the receiver.
+      def evaluate_isa_guard(type, receiver, arguments, send_node, env)
+        # Locate the static type that provides the narrowing class. When the
+        # annotation says `... is_a self`, use the receiver's type (mirrors
+        # Ruby's `Module#===`). Otherwise look up the named argument.
+        klass_type =
+          if type.arg == "self"
+            if receiver
+              rtype = factory.deep_expand_alias(typing.type_of(node: receiver)) || raise
+              if rtype.is_a?(AST::Types::Self) && self_type
+                self_type
+              else
+                rtype
+              end
+            elsif self_type
+              self_type
+            end
+          else
+            klass_node = send_node && find_argument_node(type.arg, send_node, arguments)
+            return nil unless klass_node
+            factory.deep_expand_alias(typing.type_of(node: klass_node))
+          end
+
+        return nil unless klass_type
+        # Only `singleton(X)` reliably identifies a concrete class to narrow to.
+        # Other types (`Module`, `Class`, etc.) carry no specific class info.
+        return nil unless klass_type.is_a?(AST::Types::Name::Singleton)
+
+        # Locate the subject (the value being narrowed).
+        subject_type, narrow_target =
+          case type.subject
+          when "self"
+            if receiver
+              rtype = factory.deep_expand_alias(typing.type_of(node: receiver)) || raise
+              if rtype.is_a?(AST::Types::Self) && self_type
+                [self_type, :self]
+              else
+                [rtype, receiver]
+              end
+            elsif self_type
+              [self_type, :self]
+            else
+              return nil
+            end
+          else
+            subject_node = send_node && find_argument_node(type.subject, send_node, arguments)
+            return nil unless subject_node
+            [factory.deep_expand_alias(typing.type_of(node: subject_node)) || raise, subject_node]
+          end
+
+        truthy_type, falsy_type = type_case_select(subject_type, klass_type.name)
+        instance_type = factory.instance_type(klass_type.name)
+
+        truthy_env, falsy_env =
+          if narrow_target.is_a?(Symbol)
+            [
+              env.refine_types(self_type: truthy_type || instance_type),
+              env.refine_types(self_type: falsy_type || subject_type)
+            ]
+          else
+            refine_node_type(
+              env: env,
+              node: narrow_target,
+              truthy_type: truthy_type || instance_type,
+              falsy_type: falsy_type || UNTYPED
+            )
+          end
+
+        truthy_result = Result.new(type: TRUE, env: truthy_env, unreachable: false)
+        truthy_result.unreachable! unless truthy_type
+
+        falsy_result = Result.new(type: FALSE, env: falsy_env, unreachable: false)
+        falsy_result.unreachable! unless falsy_type
+
+        [truthy_result, falsy_result]
       end
 
       def guard_narrow_target(guard_type, receiver, arguments, send_node)
