@@ -297,7 +297,7 @@ module Steep
               check_type(r)
             end
           end.tap do
-            Steep.logger.error { "`T <: instance` doesn't hold generally, but testing it with `#{relation} && #{relation.flip}` for compatibility"}
+            Steep.logger.debug { "`T <: instance` doesn't hold generally, but testing it with `#{relation} && #{relation.flip}` for compatibility"}
           end
 
         when relation.sub_type.is_a?(AST::Types::Class) && !instance_type.is_a?(AST::Types::Class)
@@ -312,7 +312,7 @@ module Steep
               check_type(r)
             end
           end.tap do
-            Steep.logger.error { "`T <: class` doesn't hold generally, but testing with `#{relation} && |- #{relation.flip}` for compatibility"}
+            Steep.logger.debug { "`T <: class` doesn't hold generally, but testing with `#{relation} && |- #{relation.flip}` for compatibility"}
           end
 
         when alias?(relation.sub_type)
