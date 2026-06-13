@@ -2116,6 +2116,16 @@ module Steep
             in_patterns.each do |in_pattern|
               pattern_node, guard_node, body_node = in_pattern.children
 
+              if remaining_type.is_a?(AST::Types::Bot)
+                typing.add_error(
+                  Diagnostic::Ruby::UnreachableValueBranch.new(
+                    node: in_pattern,
+                    type: remaining_type,
+                    location: in_pattern.location.keyword || in_pattern.location.expression || raise
+                  )
+                )
+              end
+
               branch_scrutinee = narrow_scrutinee_via_pattern(pattern_node, remaining_type)
               branch_constr, _bindings = next_constr.check_pattern(pattern_node, branch_scrutinee)
 
@@ -5087,7 +5097,10 @@ module Steep
       return scrutinee_type unless const_type.is_a?(AST::Types::Name::Singleton)
 
       interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: typing, config: builder_config)
-      _, falsy = interpreter.type_case_select(scrutinee_type, const_type.name)
+      truthy, falsy = interpreter.type_case_select(scrutinee_type, const_type.name)
+      # type_case_select returns nil for falsy when nothing remains and nil for truthy when
+      # nothing matched. Map "nil falsy with non-nil truthy" to Bot (the const subsumed it).
+      return AST::Types::Bot.instance if falsy.nil? && truthy
       falsy || scrutinee_type
     end
 

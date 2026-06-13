@@ -373,3 +373,25 @@
     severity: ERROR
     message: Type `(::Integer | nil)` does not have method `upcase`
     code: Ruby::NoMethod
+- file: i.rb
+  diagnostics:
+  - range:
+      start:
+        line: 11
+        character: 0
+      end:
+        line: 11
+        character: 2
+    severity: ERROR
+    message: The branch may evaluate to a value of `bot` but unreachable
+    code: Ruby::UnreachableValueBranch
+  - range:
+      start:
+        line: 20
+        character: 0
+      end:
+        line: 20
+        character: 2
+    severity: ERROR
+    message: The branch may evaluate to a value of `bot` but unreachable
+    code: Ruby::UnreachableValueBranch
