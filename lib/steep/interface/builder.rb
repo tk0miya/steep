@@ -752,7 +752,7 @@ module Steep
         operator = AST::Types::Logic::Guard.normalize_operator(op_raw)
         type_name = match[3] or raise
 
-        resolved = resolve_guard_type(type_name, definition)
+        resolved = resolve_guard_type(type_name, definition, method_def)
         return method_type unless resolved
 
         guard = AST::Types::Logic::Guard.new(subject: subject, operator: operator, type: resolved)
@@ -766,23 +766,54 @@ module Steep
         subject = match[1] or raise
         type_name = match[3] or raise
 
-        resolved = resolve_guard_type(type_name, definition)
+        resolved = resolve_guard_type(type_name, definition, method_def)
         return method_type unless resolved
 
         assert = AST::Types::Logic::Assert.new(subject: subject, type: resolved)
         method_type.with(type: method_type.type.with(return_type: assert))
       end
 
-      def resolve_guard_type(type_name, definition)
+      def resolve_guard_type(type_name, definition, method_def)
         type = RBS::Parser.parse_type(type_name) rescue nil
         return nil unless type
+
+        # Type variables declared on the enclosing class or on the method itself
+        # are treated as variables, not as class names to resolve.
+        type_var_names = guard_type_variable_names(definition, method_def)
+        type = rewrite_guard_type_variables(type, type_var_names)
 
         context = context_from(definition.type_name)
         unresolved = false
         resolved = type.map_type_name do |name|
           factory.absolute_type_name(name, context: context) or (unresolved = true; name)
         end
-        unresolved ? nil : resolved
+        return nil if unresolved
+
+        factory.type(resolved)
+      end
+
+      def guard_type_variable_names(definition, method_def)
+        names = Set[]
+        definition.type_params.each { names << _1.name.to_sym }
+        method_def.type.type_params.each { names << _1.name.to_sym }
+        names
+      end
+
+      # Rewrite RBS `ClassInstance` nodes whose bare name matches a declared
+      # type variable into proper `Variable` nodes. `RBS::Parser.parse_type` has
+      # no context and always parses bare uppercase names as class instances.
+      def rewrite_guard_type_variables(type, type_var_names)
+        case type
+        when RBS::Types::ClassInstance
+          name = type.name
+          if type.args.empty? && name.namespace.empty? && type_var_names.include?(name.name)
+            RBS::Types::Variable.new(name: name.name, location: type.location)
+          else
+            type.map_type { rewrite_guard_type_variables(_1, type_var_names) }
+          end
+        else
+          type.map_type { rewrite_guard_type_variables(_1, type_var_names) }
+        end
       end
 
       def context_from(type_name)

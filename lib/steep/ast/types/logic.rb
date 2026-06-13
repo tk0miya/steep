@@ -78,6 +78,25 @@ module Steep
           def hash
             self.class.hash ^ subject.hash ^ operator.hash ^ type.hash
           end
+
+          def free_variables
+            type.free_variables
+          end
+
+          def subst(s)
+            new_type = type.subst(s)
+            return self if new_type.equal?(type)
+            Guard.new(subject: subject, operator: operator, type: new_type)
+          end
+
+          def each_child(&block)
+            return enum_for(:each_child) unless block
+            yield type
+          end
+
+          def map_type(&block)
+            Guard.new(subject: subject, operator: operator, type: yield(type))
+          end
         end
 
         # A type for assertion-style guard: methods that narrow the subject in
@@ -99,6 +118,25 @@ module Steep
 
           def hash
             self.class.hash ^ subject.hash ^ type.hash
+          end
+
+          def free_variables
+            type.free_variables
+          end
+
+          def subst(s)
+            new_type = type.subst(s)
+            return self if new_type.equal?(type)
+            Assert.new(subject: subject, type: new_type)
+          end
+
+          def each_child(&block)
+            return enum_for(:each_child) unless block
+            yield type
+          end
+
+          def map_type(&block)
+            Assert.new(subject: subject, type: yield(type))
           end
         end
 

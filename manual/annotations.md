@@ -280,6 +280,43 @@ end
 * Validation errors on the annotation itself are reported as
   `RBS::Signature::TypeGuardSyntaxError` (syntactic) or
   `RBS::Signature::InvalidTypeGuardType` (the type cannot be parsed or resolved).
+* The guard type can reference a type parameter of the enclosing class or of
+  the method itself. The variable is resolved at each call site using the
+  receiver's type arguments or the method's inferred type argument. For
+  example:
+
+  ```rbs
+  class Container[T]
+    %a{guard:x is T}
+    def includes?: (untyped x) -> bool
+  end
+  ```
+
+  ```ruby
+  # @type var c: Container[Integer]
+  c = (_ = nil)
+  if c.includes?(v)
+    v + 1   # v narrowed to Integer
+  end
+  ```
+
+* Guards on `===` integrate with `case/when`. A `when m` clause is treated as
+  `m === case_value`, and the user-defined guard on `===` narrows the case
+  value inside the branch:
+
+  ```rbs
+  class IntMatcher
+    %a{guard:arg is Integer}
+    def ===: (untyped arg) -> bool
+  end
+  ```
+
+  ```ruby
+  case x
+  when IntMatcher.new
+    x + 1     # x narrowed to Integer
+  end
+  ```
 
 ### Assertion-style guard
 

@@ -456,7 +456,7 @@ module Steep
           receiver_type, narrow_target = guard_narrow_target(type, receiver, arguments, node)
 
           if receiver_type && narrow_target
-            sub_type = factory.type(type.type)
+            sub_type = type.type
             error_node =
               if narrow_target == :self
                 receiver || node

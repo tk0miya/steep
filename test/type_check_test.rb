@@ -2307,6 +2307,252 @@ class TypeCheckTest < Minitest::Test
     )
   end
 
+  def test_type_guard__class_type_param
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Container[T]
+            %a{guard:x is T}
+            def includes?: (untyped x) -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          # @type var c: Container[Integer]
+          c = (_ = nil)
+          # @type var v: untyped
+          v = nil
+
+          if c.includes?(v)
+            v + 1
+            v.reverse
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 8
+                character: 4
+              end:
+                line: 8
+                character: 11
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__method_type_param
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class TypeCheck
+            %a{guard:y is T}
+            def matches?: [T] (T expected, untyped y) -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          tc = TypeCheck.new
+          # @type var v: untyped
+          v = nil
+
+          if tc.matches?(0, v)
+            v + 1
+            v.reverse
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 7
+                character: 4
+              end:
+                line: 7
+                character: 11
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_assert__class_type_param
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Container[T]
+            %a{assert:x is T}
+            def assert_includes!: (untyped x) -> void
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          # @type var c: Container[Integer]
+          c = (_ = nil)
+          # @type var v: untyped
+          v = nil
+
+          c.assert_includes!(v)
+          v + 1
+          v.reverse
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 8
+                character: 2
+              end:
+                line: 8
+                character: 9
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__triple_equal_case_when
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class IntMatcher
+            %a{guard:arg is Integer}
+            def ===: (untyped arg) -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          m = IntMatcher.new
+          # @type var x: untyped
+          x = nil
+
+          case x
+          when m
+            x + 1
+            x.reverse
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 8
+                character: 4
+              end:
+                line: 8
+                character: 11
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__triple_equal_case_when_is_not
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class NotNil
+            %a{guard:arg is not nil}
+            def ===: (untyped? arg) -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          nn = NotNil.new
+          # @type var x: String?
+          x = nil
+
+          case x
+          when nn
+            x.upcase
+          else
+            x.upcase
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 9
+                character: 4
+              end:
+                line: 9
+                character: 10
+            severity: ERROR
+            message: Type `nil` does not have method `upcase`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_guard__triple_equal_case_when_generic
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class TypedMatcher[T]
+            %a{guard:arg is T}
+            def ===: (untyped arg) -> bool
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          # @type var m: TypedMatcher[Integer]
+          m = (_ = nil)
+          # @type var x: untyped
+          x = nil
+
+          case x
+          when m
+            x + 1
+            x.reverse
+          end
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 9
+                character: 4
+              end:
+                line: 9
+                character: 11
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
   def test_argument_error__unexpected_unexpected_positional_argument
     run_type_check_test(
       signatures: {

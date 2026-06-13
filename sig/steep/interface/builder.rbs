@@ -114,7 +114,11 @@ module Steep
 
       def replace_assert_method: (RBS::Definition, RBS::Definition::Method::TypeDef, MethodType) -> MethodType
 
-      def resolve_guard_type: (String type_name, RBS::Definition) -> RBS::Types::t?
+      def resolve_guard_type: (String type_name, RBS::Definition, RBS::Definition::Method::TypeDef) -> AST::Types::t?
+
+      def guard_type_variable_names: (RBS::Definition, RBS::Definition::Method::TypeDef) -> Set[Symbol]
+
+      def rewrite_guard_type_variables: (RBS::Types::t, Set[Symbol] type_var_names) -> RBS::Types::t
 
       def context_from: (RBS::TypeName) -> RBS::Resolver::context
 

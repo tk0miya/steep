@@ -2754,7 +2754,7 @@ module Steep
       arg_node = interpreter.find_argument_node(assert.subject, send_node, arguments)
       return pair unless arg_node
 
-      sub_type = checker.factory.type(assert.type)
+      sub_type = assert.type
 
       new_env =
         case arg_node.type

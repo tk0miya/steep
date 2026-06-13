@@ -56,13 +56,22 @@ module Steep
 
           attr_reader subject: String
           attr_reader operator: String
-          attr_reader type: RBS::Types::t
+          attr_reader type: AST::Types::t
 
-          def self.new: (subject: String, operator: String, type: RBS::Types::t) -> Guard
+          def self.new: (subject: String, operator: String, type: AST::Types::t) -> Guard
 
           def self.normalize_operator: (String) -> String
 
-          def initialize: (subject: String, operator: String, type: RBS::Types::t) -> void
+          def initialize: (subject: String, operator: String, type: AST::Types::t) -> void
+
+          def free_variables: () -> Set[AST::Types::variable]
+
+          def subst: (Interface::Substitution) -> Guard
+
+          def each_child: () { (AST::Types::t) -> void } -> void
+                        | () -> Enumerator[AST::Types::t, void]
+
+          def map_type: () { (AST::Types::t) -> AST::Types::t } -> Guard
         end
 
         # A type for assertion-style guard.
@@ -70,11 +79,20 @@ module Steep
           PATTERN: Regexp
 
           attr_reader subject: String
-          attr_reader type: RBS::Types::t
+          attr_reader type: AST::Types::t
 
-          def self.new: (subject: String, type: RBS::Types::t) -> Assert
+          def self.new: (subject: String, type: AST::Types::t) -> Assert
 
-          def initialize: (subject: String, type: RBS::Types::t) -> void
+          def initialize: (subject: String, type: AST::Types::t) -> void
+
+          def free_variables: () -> Set[AST::Types::variable]
+
+          def subst: (Interface::Substitution) -> Assert
+
+          def each_child: () { (AST::Types::t) -> void } -> void
+                        | () -> Enumerator[AST::Types::t, void]
+
+          def map_type: () { (AST::Types::t) -> AST::Types::t } -> Assert
         end
 
         # A type with truthy/falsy type environment.

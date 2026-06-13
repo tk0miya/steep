@@ -303,20 +303,7 @@ module Steep
         end
 
         type_name = match[3] or raise
-        type = RBS::Parser.parse_type(type_name) rescue nil
-        if type.nil?
-          @errors << Diagnostic::Signature::InvalidTypeGuardType.new(type_name, location: annotation.location)
-          return
-        end
-
-        context = context_from(definition.type_name)
-        unresolved = false
-        type.map_type_name do |name|
-          factory.absolute_type_name(name, context: context) or (unresolved = true; name)
-        end
-        if unresolved
-          @errors << Diagnostic::Signature::InvalidTypeGuardType.new(type_name, location: annotation.location)
-        end
+        validate_guard_type(definition, method_type, annotation, type_name)
       end
 
       def validate_type_assert_annotation(definition, method_type, annotation)
@@ -335,15 +322,26 @@ module Steep
         end
 
         type_name = match[3] or raise
+        validate_guard_type(definition, method_type, annotation, type_name)
+      end
+
+      def validate_guard_type(definition, method_type, annotation, type_name)
         type = RBS::Parser.parse_type(type_name) rescue nil
         if type.nil?
           @errors << Diagnostic::Signature::InvalidTypeGuardType.new(type_name, location: annotation.location)
           return
         end
 
+        # Bare uppercase names that match a class- or method-level type parameter
+        # are valid; they refer to the type variable rather than an unknown class.
+        type_var_names = Set[]
+        definition.type_params.each { type_var_names << _1.name.to_sym }
+        method_type.type_params.each { type_var_names << _1.name.to_sym }
+
         context = context_from(definition.type_name)
         unresolved = false
         type.map_type_name do |name|
+          next name if name.namespace.empty? && type_var_names.include?(name.name)
           factory.absolute_type_name(name, context: context) or (unresolved = true; name)
         end
         if unresolved
