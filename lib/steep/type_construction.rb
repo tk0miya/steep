@@ -5127,6 +5127,8 @@ module Steep
             rest: has_rest ? AST::Builtin::Array.instance_type(element_type) : nil,
             trailing: Array.new(trailing_count) { element_type }
           }
+        elsif (deconstruct_ret = lookup_pattern_method_return_type(scrutinee_type, :deconstruct))
+          decompose_array_pattern_type(deconstruct_ret, leading_count, has_rest, trailing_count)
         else
           fallback_array_pattern_decomposition(leading_count, has_rest, trailing_count)
         end
@@ -5168,6 +5170,8 @@ module Steep
         if AST::Builtin::Array.instance_type?(scrutinee_type)
           element_type = scrutinee_type.args[0] || AST::Builtin.any_type
           [element_type, AST::Builtin::Array.instance_type(element_type)]
+        elsif (deconstruct_ret = lookup_pattern_method_return_type(scrutinee_type, :deconstruct))
+          decompose_find_pattern_type(deconstruct_ret)
         else
           [AST::Builtin.any_type, AST::Builtin::Array.instance_type(AST::Builtin.any_type)]
         end
@@ -5192,6 +5196,8 @@ module Steep
       when AST::Types::Name::Instance
         if AST::Builtin::Hash.instance_type?(scrutinee_type)
           scrutinee_type.args[1] || AST::Builtin.any_type
+        elsif (ret = lookup_pattern_method_return_type(scrutinee_type, :deconstruct_keys))
+          hash_pattern_value_type(ret, key)
         else
           AST::Builtin.any_type
         end
@@ -5215,6 +5221,8 @@ module Steep
       when AST::Types::Name::Instance
         if AST::Builtin::Hash.instance_type?(scrutinee_type)
           scrutinee_type.args[1] || AST::Builtin.any_type
+        elsif (ret = lookup_pattern_method_return_type(scrutinee_type, :deconstruct_keys))
+          hash_pattern_any_value_type(ret)
         else
           AST::Builtin.any_type
         end
@@ -5238,6 +5246,8 @@ module Steep
       when AST::Types::Name::Instance
         if AST::Builtin::Hash.instance_type?(scrutinee_type)
           scrutinee_type
+        elsif (ret = lookup_pattern_method_return_type(scrutinee_type, :deconstruct_keys))
+          hash_pattern_rest_type(ret)
         else
           AST::Builtin::Hash.instance_type(AST::Builtin::Symbol.instance_type, AST::Builtin.any_type)
         end
@@ -5246,6 +5256,20 @@ module Steep
       else
         AST::Builtin::Hash.instance_type(AST::Builtin::Symbol.instance_type, AST::Builtin.any_type)
       end
+    end
+
+    # Look up `method_name` on `type` (via the interface builder) and return the
+    # joined return type. Returns nil if the method isn't present.
+    def lookup_pattern_method_return_type(type, method_name)
+      method = calculate_interface(type, method_name, private: false)
+      return nil unless method
+
+      return_types = method.method_types.map {|mt| mt.type.return_type }
+      return nil if return_types.empty?
+
+      union_type_unify(*return_types)
+    rescue
+      nil
     end
 
     def union_type_unify(*types)
