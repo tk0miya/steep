@@ -2103,6 +2103,60 @@ module Steep
             add_typing(node, type: union_type_unify(*types), constr: constr)
           end
 
+        when :case_match
+          yield_self do
+            subject_node, *in_patterns, else_node = node.children
+
+            subject_type, constr = synthesize(subject_node).to_ary
+
+            branch_results = [] #: Array[Pair]
+            next_constr = constr
+
+            in_patterns.each do |in_pattern|
+              pattern_node, guard_node, body_node = in_pattern.children
+
+              branch_constr, _bindings = next_constr.check_pattern(pattern_node, subject_type)
+
+              if guard_node
+                guard_cond = guard_node.children[0]
+                _, branch_constr = branch_constr.synthesize(guard_cond, condition: true).to_ary
+              end
+
+              branch_result =
+                if body_node
+                  body_constr = branch_constr.for_branch(body_node)
+                  typing.cursor_context.set_node_context(body_node, body_constr.context)
+                  body_constr.synthesize(body_node, hint: hint)
+                else
+                  Pair.new(type: AST::Builtin.nil_type, constr: branch_constr)
+                end
+
+              branch_results << branch_result
+            end
+
+            if else_node
+              branch_results << next_constr.synthesize(else_node, hint: hint)
+            end
+
+            branch_results.reject! do |result|
+              result.type.is_a?(AST::Types::Bot)
+            end
+
+            types = branch_results.map(&:type)
+            envs = branch_results.map {|result| result.constr.context.type_env }
+
+            if types.empty?
+              types = [AST::Builtin.nil_type]
+              envs = [next_constr.context.type_env]
+            end
+
+            constr = next_constr.update_type_env do |env|
+              env.join(*envs)
+            end
+
+            add_typing(node, type: union_type_unify(*types), constr: constr)
+          end
+
         when :rescue
           yield_self do
             body, *resbodies, else_node = node.children
@@ -4713,6 +4767,124 @@ module Steep
     def union_type(*types)
       raise if types.empty?
       AST::Types::Union.build(types: types.compact)
+    end
+
+    # Type check a pattern (`in` clause pattern) against `scrutinee_type`.
+    #
+    # Returns `[constr, bindings]` where `constr` carries variable bindings introduced by
+    # the pattern, and `bindings` maps variable name to its bound type.
+    #
+    # Step 1 implementation: recognizes every pattern node type and binds variables, but
+    # does not narrow the scrutinee type via `deconstruct` / `deconstruct_keys`. Composite
+    # patterns bind inner variables with `any`.
+    def check_pattern(pattern_node, scrutinee_type)
+      constr = self #: TypeConstruction
+      bindings = {} #: Hash[Symbol, AST::Types::t]
+
+      case pattern_node.type
+      when :match_var
+        name = pattern_node.children[0]
+        bindings[name] = scrutinee_type
+        constr = constr.update_type_env do |env|
+          env.assign_local_variable(name, scrutinee_type, nil)
+        end
+        [constr, bindings]
+
+      when :pin
+        inner = pattern_node.children[0]
+        _, constr = constr.synthesize(inner, condition: true).to_ary
+        [constr, bindings]
+
+      when :match_nil_pattern, :nil, :int, :float, :str, :sym, :true, :false, :rational, :complex, :regexp, :dstr, :dsym, :lambda, :array, :hash, :irange, :erange, :const, :lvar, :ivar, :gvar, :cvar, :self
+        [constr, bindings]
+
+      when :match_rest
+        var_node = pattern_node.children[0]
+        if var_node
+          rest_type = AST::Builtin::Array.instance_type(AST::Builtin.any_type)
+          constr, b = constr.check_pattern(var_node, rest_type)
+          bindings.merge!(b)
+        end
+        [constr, bindings]
+
+      when :array_pattern, :array_pattern_with_tail, :find_pattern
+        pattern_node.children.each do |child|
+          constr, b = constr.check_pattern(child, AST::Builtin.any_type)
+          bindings.merge!(b)
+        end
+        [constr, bindings]
+
+      when :hash_pattern
+        pattern_node.children.each do |child|
+          case child.type
+          when :pair
+            _, val_pat = child.children
+            constr, b = constr.check_pattern(val_pat, AST::Builtin.any_type)
+            bindings.merge!(b)
+          when :match_var
+            name = child.children[0]
+            bindings[name] = AST::Builtin.any_type
+            constr = constr.update_type_env do |env|
+              env.assign_local_variable(name, AST::Builtin.any_type, nil)
+            end
+          when :match_rest
+            var_node = child.children[0]
+            if var_node
+              rest_type = AST::Builtin::Hash.instance_type(
+                AST::Builtin::Symbol.instance_type,
+                AST::Builtin.any_type
+              )
+              constr, b = constr.check_pattern(var_node, rest_type)
+              bindings.merge!(b)
+            end
+          when :match_nil_pattern
+            # `**nil`: nothing to bind
+          end
+        end
+        [constr, bindings]
+
+      when :const_pattern
+        const_node, inner = pattern_node.children
+        _, constr = constr.synthesize(const_node).to_ary
+        constr, b = constr.check_pattern(inner, AST::Builtin.any_type)
+        bindings.merge!(b)
+        [constr, bindings]
+
+      when :match_as
+        inner, var_node = pattern_node.children
+        constr, b1 = constr.check_pattern(inner, scrutinee_type)
+        constr, b2 = constr.check_pattern(var_node, scrutinee_type)
+        bindings.merge!(b1).merge!(b2)
+        [constr, bindings]
+
+      when :match_alt
+        left, right = pattern_node.children
+        left_constr, left_bindings = constr.check_pattern(left, scrutinee_type)
+        right_constr, right_bindings = constr.check_pattern(right, scrutinee_type)
+
+        merged_env = left_constr.context.type_env.join(right_constr.context.type_env)
+        merged_constr = constr.update_type_env { merged_env }
+
+        merged_bindings = {} #: Hash[Symbol, AST::Types::t]
+        (left_bindings.keys | right_bindings.keys).each do |name|
+          lt = left_bindings[name]
+          rt = right_bindings[name]
+          merged_bindings[name] =
+            if lt && rt
+              union_type(lt, rt)
+            else
+              lt || rt || AST::Builtin.any_type
+            end
+        end
+        [merged_constr, merged_bindings]
+
+      else
+        # Unknown pattern node: traverse synthesizable children just to keep typing consistent.
+        each_child_node(pattern_node) do |child|
+          _, constr = constr.synthesize(child).to_ary
+        end
+        [constr, bindings]
+      end
     end
 
     def union_type_unify(*types)

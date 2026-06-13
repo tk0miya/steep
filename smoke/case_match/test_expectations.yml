@@ -1,0 +1,23 @@
+---
+- file: b.rb
+  diagnostics:
+  - range:
+      start:
+        line: 9
+        character: 4
+      end:
+        line: 9
+        character: 10
+    severity: ERROR
+    message: Type `::Integer` does not have method `upcase`
+    code: Ruby::NoMethod
+  - range:
+      start:
+        line: 15
+        character: 4
+      end:
+        line: 15
+        character: 10
+    severity: ERROR
+    message: Type `::Integer` does not have method `upcase`
+    code: Ruby::NoMethod
