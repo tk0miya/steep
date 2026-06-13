@@ -223,5 +223,121 @@
         line: 49
         character: 10
     severity: ERROR
+    message: Type `::Integer` does not have method `upcase`
+    code: Ruby::NoMethod
+- file: e.rb
+  diagnostics:
+  - range:
+      start:
+        line: 10
+        character: 4
+      end:
+        line: 10
+        character: 9
+    severity: ERROR
+    message: Type `(::Integer | ::String)` does not have method `even?`
+    code: Ruby::NoMethod
+  - range:
+      start:
+        line: 26
+        character: 4
+      end:
+        line: 26
+        character: 10
+    severity: ERROR
     message: Type `(::Integer | nil)` does not have method `upcase`
+    code: Ruby::NoMethod
+- file: f.rb
+  diagnostics:
+  - range:
+      start:
+        line: 9
+        character: 2
+      end:
+        line: 9
+        character: 8
+    severity: ERROR
+    message: Type `::Integer` does not have method `upcase`
+    code: Ruby::NoMethod
+  - range:
+      start:
+        line: 10
+        character: 2
+      end:
+        line: 10
+        character: 7
+    severity: ERROR
+    message: Type `::String` does not have method `even?`
+    code: Ruby::NoMethod
+  - range:
+      start:
+        line: 18
+        character: 4
+      end:
+        line: 18
+        character: 10
+    severity: ERROR
+    message: Type `::Integer` does not have method `upcase`
+    code: Ruby::NoMethod
+  - range:
+      start:
+        line: 29
+        character: 2
+      end:
+        line: 29
+        character: 8
+    severity: ERROR
+    message: Type `::Integer` does not have method `upcase`
+    code: Ruby::NoMethod
+  - range:
+      start:
+        line: 30
+        character: 2
+      end:
+        line: 30
+        character: 7
+    severity: ERROR
+    message: Type `::String` does not have method `even?`
+    code: Ruby::NoMethod
+  - range:
+      start:
+        line: 31
+        character: 4
+      end:
+        line: 31
+        character: 9
+    severity: ERROR
+    message: Type `::Symbol` does not have method `even?`
+    code: Ruby::NoMethod
+- file: g.rb
+  diagnostics:
+  - range:
+      start:
+        line: 24
+        character: 4
+      end:
+        line: 24
+        character: 10
+    severity: ERROR
+    message: Type `(::Symbol | nil)` does not have method `upcase`
+    code: Ruby::NoMethod
+  - range:
+      start:
+        line: 33
+        character: 4
+      end:
+        line: 33
+        character: 10
+    severity: ERROR
+    message: Type `(::Integer | ::String | ::Symbol | nil)` does not have method `upcase`
+    code: Ruby::NoMethod
+  - range:
+      start:
+        line: 43
+        character: 4
+      end:
+        line: 43
+        character: 10
+    severity: ERROR
+    message: Type `(::Symbol | nil)` does not have method `upcase`
     code: Ruby::NoMethod

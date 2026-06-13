@@ -2111,11 +2111,13 @@ module Steep
 
             branch_results = [] #: Array[Pair]
             next_constr = constr
+            remaining_type = subject_type
 
             in_patterns.each do |in_pattern|
               pattern_node, guard_node, body_node = in_pattern.children
 
-              branch_constr, _bindings = next_constr.check_pattern(pattern_node, subject_type)
+              branch_scrutinee = narrow_scrutinee_via_pattern(pattern_node, remaining_type)
+              branch_constr, _bindings = next_constr.check_pattern(pattern_node, branch_scrutinee)
 
               if guard_node
                 guard_cond = guard_node.children[0]
@@ -2132,10 +2134,24 @@ module Steep
                 end
 
               branch_results << branch_result
+
+              # If the clause has no guard, subsequent clauses see the subject narrowed
+              # to the part that did NOT match. Guards may bail out for matching values,
+              # so we keep the type unchanged in that case.
+              unless guard_node
+                remaining_type = subtract_scrutinee_via_pattern(pattern_node, remaining_type)
+              end
             end
 
             if else_node
-              branch_results << next_constr.synthesize(else_node, hint: hint)
+              else_constr = next_constr.update_type_env do |env|
+                if subject_node.type == :lvar
+                  env.assign_local_variable(subject_node.children[0], remaining_type, nil)
+                else
+                  env
+                end
+              end
+              branch_results << else_constr.synthesize(else_node, hint: hint)
             end
 
             branch_results.reject! do |result|
@@ -2155,6 +2171,26 @@ module Steep
             end
 
             add_typing(node, type: union_type_unify(*types), constr: constr)
+          end
+
+        when :match_pattern
+          yield_self do
+            subject_node, pattern_node = node.children
+
+            subject_type, constr = synthesize(subject_node).to_ary
+            constr, _ = constr.check_pattern(pattern_node, subject_type)
+
+            add_typing(node, type: subject_type, constr: constr)
+          end
+
+        when :match_pattern_p
+          yield_self do
+            subject_node, pattern_node = node.children
+
+            subject_type, constr = synthesize(subject_node).to_ary
+            constr, _ = constr.check_pattern(pattern_node, subject_type)
+
+            add_typing(node, type: AST::Builtin.bool_type, constr: constr)
           end
 
         when :rescue
@@ -4913,8 +4949,11 @@ module Steep
 
       when :match_alt
         left, right = pattern_node.children
-        left_constr, left_bindings = constr.check_pattern(left, scrutinee_type)
-        right_constr, right_bindings = constr.check_pattern(right, scrutinee_type)
+        left_narrowed = narrow_scrutinee_via_pattern(left, scrutinee_type)
+        right_narrowed = narrow_scrutinee_via_pattern(right, scrutinee_type)
+
+        left_constr, left_bindings = constr.check_pattern(left, left_narrowed)
+        right_constr, right_bindings = constr.check_pattern(right, right_narrowed)
 
         merged_env = left_constr.context.type_env.join(right_constr.context.type_env)
         merged_constr = constr.update_type_env { merged_env }
@@ -4955,9 +4994,52 @@ module Steep
         const_type, _ = synthesize(const_node).to_ary
         narrow_scrutinee_by_const(scrutinee_type, const_type)
       when :nil
-        narrow_scrutinee_by_const(scrutinee_type, AST::Types::Name::Singleton.new(name: AST::Builtin::NilClass.module_name))
+        narrow_to_nil(scrutinee_type)
+      when :match_alt
+        left, right = pattern_node.children
+        union_type_unify(
+          narrow_scrutinee_via_pattern(left, scrutinee_type),
+          narrow_scrutinee_via_pattern(right, scrutinee_type)
+        )
+      when :match_as
+        inner, _ = pattern_node.children
+        narrow_scrutinee_via_pattern(inner, scrutinee_type)
       else
         scrutinee_type
+      end
+    end
+
+    def nil_like_type?(type)
+      type.is_a?(AST::Types::Nil) || !!AST::Builtin::NilClass.instance_type?(type)
+    end
+
+    def narrow_to_nil(scrutinee_type)
+      case scrutinee_type
+      when AST::Types::Union
+        nil_types = scrutinee_type.types.select {|t| nil_like_type?(t) }
+        if nil_types.empty?
+          AST::Builtin.nil_type
+        else
+          AST::Types::Union.build(types: nil_types)
+        end
+      when AST::Types::Any
+        AST::Builtin.nil_type
+      else
+        nil_like_type?(scrutinee_type) ? scrutinee_type : AST::Builtin.nil_type
+      end
+    end
+
+    def subtract_nil(scrutinee_type)
+      case scrutinee_type
+      when AST::Types::Union
+        types = scrutinee_type.types.reject {|t| nil_like_type?(t) }
+        if types.empty?
+          AST::Types::Bot.instance
+        else
+          AST::Types::Union.build(types: types)
+        end
+      else
+        nil_like_type?(scrutinee_type) ? AST::Types::Bot.instance : scrutinee_type
       end
     end
 
@@ -4969,6 +5051,44 @@ module Steep
       interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: typing, config: builder_config)
       truthy, _ = interpreter.type_case_select(scrutinee_type, const_type.name)
       truthy || scrutinee_type
+    end
+
+    # Compute the type that remains for `scrutinee_type` after `pattern_node` did NOT match.
+    # Conservative: returns `scrutinee_type` unchanged for patterns we can't safely subtract.
+    def subtract_scrutinee_via_pattern(pattern_node, scrutinee_type)
+      case pattern_node.type
+      when :const
+        const_type, _ = synthesize(pattern_node).to_ary
+        subtract_scrutinee_by_const(scrutinee_type, const_type)
+      when :const_pattern
+        # const_pattern fails when the const doesn't match OR when the inner pattern fails.
+        # We can only safely subtract on the first reason; on the second the type stays.
+        # Skip subtraction to remain sound.
+        scrutinee_type
+      when :nil
+        subtract_nil(scrutinee_type)
+      when :match_alt
+        left, right = pattern_node.children
+        subtract_scrutinee_via_pattern(right, subtract_scrutinee_via_pattern(left, scrutinee_type))
+      when :match_as
+        inner, _ = pattern_node.children
+        subtract_scrutinee_via_pattern(inner, scrutinee_type)
+      when :match_var
+        # `in x` matches anything: nothing remains.
+        AST::Types::Bot.instance
+      else
+        # Literal patterns, hash_pattern, array_pattern etc. partially match; we can't
+        # easily express "the values that don't match" in our type system. Stay conservative.
+        scrutinee_type
+      end
+    end
+
+    def subtract_scrutinee_by_const(scrutinee_type, const_type)
+      return scrutinee_type unless const_type.is_a?(AST::Types::Name::Singleton)
+
+      interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: typing, config: builder_config)
+      _, falsy = interpreter.type_case_select(scrutinee_type, const_type.name)
+      falsy || scrutinee_type
     end
 
     # Compute element types for an `:array_pattern` against `scrutinee_type`.
