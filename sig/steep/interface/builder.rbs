@@ -124,6 +124,8 @@ module Steep
 
       def replace_primitive_method: (method_name, RBS::Definition::Method::TypeDef, MethodType) -> MethodType
 
+      def primitive_first_positional_name: (RBS::Definition::Method::TypeDef) -> String?
+
       def replace_kernel_class: (method_name, RBS::Definition::Method::TypeDef, MethodType) { () -> AST::Types::t } -> MethodType
 
       def add_implicitly_returns_nil: (Enumerable[RBS::AST::Annotation], MethodType) -> MethodType

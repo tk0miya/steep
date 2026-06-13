@@ -38,10 +38,6 @@ module Steep
         class ReceiverIsArg < Base
         end
 
-        # A type for `Class#===` call results.
-        class ArgIsReceiver < Base
-        end
-
         # A type for `Object#===` call results.
         class ArgEqualsReceiver < Base
         end

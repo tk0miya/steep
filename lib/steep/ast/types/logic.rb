@@ -44,9 +44,6 @@ module Steep
         class ReceiverIsArg < Base
         end
 
-        class ArgIsReceiver < Base
-        end
-
         class ArgEqualsReceiver < Base
         end
 

@@ -206,6 +206,7 @@ end
 
       node = source.node.children[1]
 
+      return_type = AST::Types::Logic::IsAGuard.new(subject: "arg", arg: "self")
       call = TypeInference::MethodCall::Typed.new(
         node: node,
         context: TypeInference::MethodCall::TopLevelContext.new,
@@ -214,16 +215,16 @@ end
         actual_method_type: parse_method_type("(untyped) -> bool").yield_self do |method_type|
           method_type.with(
             type: method_type.type.with(
-              return_type: AST::Types::Logic::ArgIsReceiver.new()
+              return_type: return_type
             )
           )
         end,
         method_decls: [],
-        return_type: AST::Types::Logic::ArgIsReceiver.new()
+        return_type: return_type
       )
 
       typing = Typing.new(source: source, root_context: nil, cursor: nil)
-      typing.add_typing(dig(node), AST::Types::Logic::ArgIsReceiver.new(), nil)
+      typing.add_typing(dig(node), return_type, nil)
       typing.add_typing(dig(node, 0), parse_type("singleton(::String)"), nil)
       typing.add_typing(dig(node, 2), parse_type("::String?"), nil)
 

@@ -44,7 +44,10 @@ module Steep
           when :!
             AST::Types::Logic::Not.instance
           when :===
-            AST::Types::Logic::ArgIsReceiver.instance
+            # `===` narrowing now flows through `IsAGuard`; here we leave the
+            # guess to the regular type resolution because the subject/arg
+            # parameter names are method-type dependent.
+            nil
           end
         end
       end
@@ -366,29 +369,6 @@ module Steep
             end
           end
 
-        when AST::Types::Logic::ArgIsReceiver
-          if receiver && (arg = arguments[0])
-            receiver_type = factory.deep_expand_alias(typing.type_of(node: receiver))
-            arg_type = typing.type_of(node: arg)
-
-            if receiver_type.is_a?(AST::Types::Name::Singleton)
-              truthy_type, falsy_type = type_case_select(arg_type, receiver_type.name)
-              truthy_env, falsy_env = refine_node_type(
-                env: env,
-                node: arg,
-                truthy_type: truthy_type || factory.instance_type(receiver_type.name),
-                falsy_type: falsy_type || UNTYPED
-              )
-
-              truthy_result = Result.new(type: TRUE, env: truthy_env, unreachable: false)
-              truthy_result.unreachable! unless truthy_type
-
-              falsy_result = Result.new(type: FALSE, env: falsy_env, unreachable: false)
-              falsy_result.unreachable! unless falsy_type
-
-              [truthy_result, falsy_result]
-            end
-          end
         when AST::Types::Logic::ArgEqualsReceiver
           if receiver && (arg = arguments[0])
             arg_type = factory.expand_alias(typing.type_of(node: arg))
@@ -550,7 +530,10 @@ module Steep
       def evaluate_isa_guard(type, receiver, arguments, send_node, env)
         # Locate the static type that provides the narrowing class. When the
         # annotation says `... is_a self`, use the receiver's type (mirrors
-        # Ruby's `Module#===`). Otherwise look up the named argument.
+        # Ruby's `Module#===`). Otherwise look up the named argument; if the
+        # call info is unavailable (e.g. csend's synthetic send node) we fall
+        # back to the first positional argument — every shipping form
+        # (`is_a?` family, `Module#===`) has the class as `arguments[0]`.
         klass_type =
           if type.arg == "self"
             if receiver
@@ -565,6 +548,7 @@ module Steep
             end
           else
             klass_node = send_node && find_argument_node(type.arg, send_node, arguments)
+            klass_node ||= arguments.first
             return nil unless klass_node
             factory.deep_expand_alias(typing.type_of(node: klass_node))
           end
@@ -574,7 +558,10 @@ module Steep
         # Other types (`Module`, `Class`, etc.) carry no specific class info.
         return nil unless klass_type.is_a?(AST::Types::Name::Singleton)
 
-        # Locate the subject (the value being narrowed).
+        # Locate the subject (the value being narrowed). When the named lookup
+        # fails (e.g. typing has no recorded call for the synthetic send used by
+        # csend), fall back to the first positional argument, matching the
+        # narrowing shape of `is_a?` and `Module#===` exactly.
         subject_type, narrow_target =
           case type.subject
           when "self"
@@ -592,12 +579,14 @@ module Steep
             end
           else
             subject_node = send_node && find_argument_node(type.subject, send_node, arguments)
+            subject_node ||= arguments.first
             return nil unless subject_node
             [factory.deep_expand_alias(typing.type_of(node: subject_node)) || raise, subject_node]
           end
 
         truthy_type, falsy_type = type_case_select(subject_type, klass_type.name)
         instance_type = factory.instance_type(klass_type.name)
+        warn "DBG subject_type=#{subject_type} klass_name=#{klass_type.name} truthy=#{truthy_type.inspect} falsy=#{falsy_type.inspect} instance_type=#{instance_type}"
 
         truthy_env, falsy_env =
           if narrow_target.is_a?(Symbol)

@@ -846,10 +846,10 @@ module Steep
             case
             when RBS::BuiltinNames::Object.name,
               RBS::BuiltinNames::Kernel.name
-              if member.instance?
+              if member.instance? && (arg = primitive_first_positional_name(method_def))
                 return method_type.with(
                   type: method_type.type.with(
-                    return_type: AST::Types::Logic::ReceiverIsArg.instance()
+                    return_type: AST::Types::Logic::IsAGuard.new(subject: "self", arg: arg)
                   )
                 )
               end
@@ -885,11 +885,13 @@ module Steep
           when :===
             case defined_in
             when RBS::BuiltinNames::Module.name
-              return method_type.with(
-                type: method_type.type.with(
-                  return_type: AST::Types::Logic::ArgIsReceiver.instance()
+              if (arg = primitive_first_positional_name(method_def))
+                return method_type.with(
+                  type: method_type.type.with(
+                    return_type: AST::Types::Logic::IsAGuard.new(subject: arg, arg: "self")
+                  )
                 )
-              )
+              end
             when RBS::BuiltinNames::BasicObject.name,
               RBS::BuiltinNames::Object.name,
               RBS::BuiltinNames::Kernel.name,
@@ -937,6 +939,17 @@ module Steep
         end
 
         method_type
+      end
+
+      # Resolve the name of the first required positional parameter of a method
+      # type definition. Used to wire user-defined predicate machinery into the
+      # built-in `is_a?` / `Module#===` narrowing without hard-coding parameter
+      # names that vary across core RBS sigs.
+      def primitive_first_positional_name(method_def)
+        function = method_def.type.type
+        return nil unless function.is_a?(RBS::Types::Function)
+        param = function.required_positionals.first
+        param&.name&.to_s
       end
 
       def replace_kernel_class(method_name, method_def, method_type)

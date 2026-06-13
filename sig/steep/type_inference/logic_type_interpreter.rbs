@@ -108,7 +108,7 @@ module Steep
       #
       def evaluate_assignment: (Parser::AST::Node node, TypeEnv env, AST::Types::t rhs_type) -> TypeEnv
 
-      def guess_type_from_method: (Parser::AST::Node node) -> (AST::Types::Logic::ReceiverIsArg | AST::Types::Logic::ReceiverIsNil | AST::Types::Logic::Not | AST::Types::Logic::ArgIsReceiver | nil)
+      def guess_type_from_method: (Parser::AST::Node node) -> (AST::Types::Logic::ReceiverIsArg | AST::Types::Logic::ReceiverIsNil | AST::Types::Logic::Not | nil)
 
       # Partition `arg_type` into truthy and falsy types based on a literal AST node.
       #
