@@ -1,0 +1,15 @@
+# Generics + is_a + case/when integration
+class Container[T]
+  %a{guard:x is T}
+  def includes?: (untyped x) -> bool
+end
+
+class TypedMatcher[T]
+  %a{guard:arg is T}
+  def ===: (untyped arg) -> bool
+end
+
+class Helper
+  %a{guard:value is_a klass}
+  def of_type?: (Module klass, untyped value) -> bool
+end

@@ -1,0 +1,11 @@
+# Arg subject + `is not`
+class Object
+  %a{guard:x is Integer}
+  def int_arg?: (untyped x) -> bool
+
+  %a{guard:self is not nil}
+  def present?: () -> bool
+
+  %a{guard:x is not nil}
+  def given?: (untyped? x) -> bool
+end

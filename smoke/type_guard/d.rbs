@@ -1,0 +1,13 @@
+# Assert (all features)
+class Numeric
+  %a{assert:self is Integer}
+  def must_be_int!: () -> void
+end
+
+class Object
+  %a{assert:x is Integer}
+  def assert_int!: (untyped x) -> void
+
+  %a{assert:x is not nil}
+  def reject_nil!: (untyped? x) -> void
+end
