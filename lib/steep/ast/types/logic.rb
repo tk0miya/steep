@@ -126,22 +126,24 @@ module Steep
         # A type for assertion-style guard: methods that narrow the subject in
         # the caller's scope after returning normally (e.g. raise on mismatch).
         class Assert < Base
-          PATTERN = /\Aassert:\s*(\w+)\s+(is)\s+(.*?)\s*\Z/
+          PATTERN = /\Aassert:\s*(\w+)\s+(is\s+not|is)\s+(.*?)\s*\Z/
 
           attr_reader :subject
+          attr_reader :operator
           attr_reader :type
 
-          def initialize(subject:, type:)
+          def initialize(subject:, operator:, type:)
             @subject = subject
+            @operator = operator
             @type = type
           end
 
           def ==(other)
-            super && subject == other.subject && type == other.type
+            super && subject == other.subject && operator == other.operator && type == other.type
           end
 
           def hash
-            self.class.hash ^ subject.hash ^ type.hash
+            self.class.hash ^ subject.hash ^ operator.hash ^ type.hash
           end
 
           def free_variables
@@ -151,7 +153,7 @@ module Steep
           def subst(s)
             new_type = type.subst(s)
             return self if new_type.equal?(type)
-            Assert.new(subject: subject, type: new_type)
+            Assert.new(subject: subject, operator: operator, type: new_type)
           end
 
           def each_child(&block)
@@ -160,7 +162,7 @@ module Steep
           end
 
           def map_type(&block)
-            Assert.new(subject: subject, type: yield(type))
+            Assert.new(subject: subject, operator: operator, type: yield(type))
           end
         end
 

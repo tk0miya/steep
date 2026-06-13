@@ -379,12 +379,16 @@ v + 1     # v narrowed to Integer from here onward
 
 #### Syntax
 
-* `%a{assert:` *param-name* `is` *type* `}`
+* `%a{assert:` (`self` | *param-name*) (`is` | `is not`) *type* `}`
 
 #### Notes
 
-* Currently only parameter-name subjects are supported (no `self`).
-* Narrowing applies to local-variable arguments. Other expressions are left
-  unchanged.
+* The subject may be `self` (narrows the receiver after the call) or a
+  parameter name (narrows the corresponding argument expression).
+* `is not` mirrors the guard form: the post-call type is `subject - type`,
+  which makes assertion methods like `assert_not_nil!` work as expected.
+* Narrowing applies to the same set of targets as `%a{guard:...}`: local
+  variables and pure method calls (`refine_node_type` reachable expressions).
+  Other expressions are left unchanged.
 * Validation errors are reported via the same diagnostics as `%a{guard:...}`
   (`TypeGuardSyntaxError`, `InvalidTypeGuardType`).

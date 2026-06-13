@@ -1384,6 +1384,12 @@ end
 class Foo
   %a{assert: x is Integer}
   def assert_int!: (untyped x) -> void
+
+  %a{assert: self is Integer}
+  def must_be_int!: () -> void
+
+  %a{assert: x is not nil}
+  def reject_nil!: (untyped? x) -> void
 end
       RBS
 

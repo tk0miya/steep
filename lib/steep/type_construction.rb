@@ -2738,34 +2738,109 @@ module Steep
     end
 
     # Apply assertion-style guard narrowing to the env *after* the call.
-    # Used for `%a{assert:arg is TYPE}` methods that return normally only when
-    # the named argument satisfies the asserted type (e.g. raise otherwise).
+    # Used for `%a{assert:SUBJECT (is|is not) TYPE}` methods that return
+    # normally only when the subject satisfies the asserted type (e.g. raise
+    # otherwise).
+    #
+    # Mirrors `Logic::Guard`'s truthy branch:
+    #   - `is X`        : narrow subject to X
+    #   - `is not X`    : narrow subject to `subject_type - X`
+    # The falsy branch is treated as unreachable (the method raised).
+    #
+    # Narrowing supports local variables, instance/class variables and pure
+    # method calls — same set `refine_node_type` accepts on the guard side.
     def apply_assert_narrowing(send_node, pair)
       assert = pair.type
       return pair unless assert.is_a?(AST::Types::Logic::Assert)
 
-      arguments = send_node.children[2..] || []
-      interpreter = TypeInference::LogicTypeInterpreter.new(
-        subtyping: checker,
-        typing: pair.constr.typing,
-        config: builder_config,
-        self_type: self_type
-      )
-      arg_node = interpreter.find_argument_node(assert.subject, send_node, arguments)
-      return pair unless arg_node
+      receiver, _, *arguments = send_node.children
+      constr = pair.constr
+      typing = constr.typing
+      env = constr.context.type_env
+      factory = constr.checker.factory
 
-      sub_type = assert.type
-
-      new_env =
-        case arg_node.type
-        when :lvar
-          name = arg_node.children[0]
-          pair.constr.context.type_env.refine_types(local_variable_types: { name => sub_type })
+      # Determine the subject's static type and where to apply narrowing.
+      # narrow_target is either:
+      #   :self            → apply to env.refined_self_type
+      #   Parser::AST::Node → apply via refine_node_type machinery
+      subject_type, narrow_target =
+        if assert.subject == "self"
+          if receiver
+            rtype = factory.deep_expand_alias(typing.type_of(node: receiver)) || raise
+            if rtype.is_a?(AST::Types::Self) && self_type
+              [self_type, :self]
+            else
+              [rtype, receiver]
+            end
+          elsif self_type
+            [self_type, :self]
+          else
+            return pair
+          end
         else
-          return pair
+          interpreter = TypeInference::LogicTypeInterpreter.new(
+            subtyping: checker,
+            typing: typing,
+            config: builder_config,
+            self_type: self_type
+          )
+          arg_node = interpreter.find_argument_node(assert.subject, send_node, arguments)
+          return pair unless arg_node
+          [factory.deep_expand_alias(typing.type_of(node: arg_node)) || raise, arg_node]
         end
 
-      pair.with(constr: pair.constr.with_updated_context(type_env: new_env))
+      # Compute the narrowed truthy-branch type for this assert.
+      narrowed = assert_narrowed_type(assert.operator, subject_type, assert.type)
+      return pair unless narrowed
+
+      new_env =
+        if narrow_target.is_a?(Symbol)
+          env.refine_types(self_type: narrowed)
+        else
+          assert_refine_env(env, narrow_target, narrowed)
+        end
+
+      return pair unless new_env
+
+      pair.with(constr: constr.with_updated_context(type_env: new_env))
+    end
+
+    # Returns the narrowed type used in the truthy branch of `Logic::Guard`,
+    # adapted to assert semantics. Returns nil when no narrowing applies.
+    def assert_narrowed_type(operator, subject_type, sub_type)
+      case operator
+      when "is"
+        sub_type
+      when "is not"
+        # `is not X` truthy: subject minus X. Reuse the guard's case-select
+        # logic via a throwaway interpreter so we share the implementation.
+        interpreter = TypeInference::LogicTypeInterpreter.new(
+          subtyping: checker,
+          typing: typing,
+          config: builder_config,
+          self_type: self_type
+        )
+        _truthy_t, falsy_t = interpreter.type_guard_type_case_select(subject_type, sub_type)
+        falsy_t
+      end
+    end
+
+    # Apply assert narrowing on a non-self target. Mirrors the truthy side of
+    # `LogicTypeInterpreter#refine_node_type`.
+    def assert_refine_env(env, node, narrowed)
+      case node.type
+      when :lvar
+        name = node.children[0]
+        return env if TypeConstruction::SPECIAL_LVAR_NAMES.include?(name)
+        env.refine_types(local_variable_types: { name => narrowed })
+      when :send
+        env[node] ? env.refine_types(pure_call_types: { node => narrowed }) : nil
+      when :begin
+        last = node.children.last
+        last ? assert_refine_env(env, last, narrowed) : nil
+      else
+        nil
+      end
     end
 
     def synthesize_sendish(node, hint:, tapp:)

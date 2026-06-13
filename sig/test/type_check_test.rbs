@@ -136,6 +136,10 @@ class TypeCheckTest < Minitest::Test
 
   def test_type_assert__arg_is_TYPE_keyword: () -> untyped
 
+  def test_type_assert__self_subject: () -> untyped
+
+  def test_type_assert__is_not: () -> untyped
+
   def test_type_guard__class_type_param: () -> untyped
 
   def test_type_guard__method_type_param: () -> untyped

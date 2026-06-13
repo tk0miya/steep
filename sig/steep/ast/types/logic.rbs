@@ -91,11 +91,12 @@ module Steep
           PATTERN: Regexp
 
           attr_reader subject: String
+          attr_reader operator: String
           attr_reader type: AST::Types::t
 
-          def self.new: (subject: String, type: AST::Types::t) -> Assert
+          def self.new: (subject: String, operator: String, type: AST::Types::t) -> Assert
 
-          def initialize: (subject: String, type: AST::Types::t) -> void
+          def initialize: (subject: String, operator: String, type: AST::Types::t) -> void
 
           def free_variables: () -> Set[AST::Types::variable]
 

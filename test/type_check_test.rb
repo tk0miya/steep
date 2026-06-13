@@ -2268,6 +2268,88 @@ class TypeCheckTest < Minitest::Test
     )
   end
 
+  def test_type_assert__self_subject
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Numeric
+            %a{assert:self is Integer}
+            def must_be_int!: () -> void
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          # @type var n: Numeric
+          n = (_ = nil)
+          n.must_be_int!
+          n + 1
+          n.reverse
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 5
+                character: 2
+              end:
+                line: 5
+                character: 9
+            severity: ERROR
+            message: Type `::Integer` does not have method `reverse`
+            code: Ruby::NoMethod
+      YAML
+    )
+  end
+
+  def test_type_assert__is_not
+    run_type_check_test(
+      signatures: {
+        "a.rbs" => <<~RBS
+          class Object
+            %a{assert:x is not nil}
+            def reject_nil!: (untyped? x) -> void
+          end
+        RBS
+      },
+      code: {
+        "a.rb" => <<~RUBY
+          o = Object.new
+          # @type var v: String?
+          v = nil
+          o.reject_nil!(v)
+          v.upcase
+          v + 1
+        RUBY
+      },
+      expectations: <<~YAML
+        ---
+        - file: a.rb
+          diagnostics:
+          - range:
+              start:
+                line: 6
+                character: 4
+              end:
+                line: 6
+                character: 5
+            severity: ERROR
+            message: |-
+              Cannot pass a value of type `::Integer` as an argument of type `::string`
+                ::Integer <: ::string
+                  ::Integer <: (::String | ::_ToStr)
+                    ::Integer <: ::String
+                      ::Numeric <: ::String
+                        ::Object <: ::String
+                          ::BasicObject <: ::String
+            code: Ruby::ArgumentTypeMismatch
+      YAML
+    )
+  end
+
   def test_type_assert__arg_is_TYPE_keyword
     run_type_check_test(
       signatures: {

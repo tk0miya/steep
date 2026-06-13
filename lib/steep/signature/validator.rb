@@ -335,9 +335,7 @@ module Steep
         end
 
         subject = match[1] or raise
-        # Asserts do not yet support a `self` subject (the receiver of the call).
-        # Only parameter names are accepted.
-        unless guard_subject_param?(method_type, subject)
+        unless subject == "self" || guard_subject_param?(method_type, subject)
           @errors << Diagnostic::Signature::TypeGuardSyntaxError.new(annotation.string, location: annotation.location)
           return
         end

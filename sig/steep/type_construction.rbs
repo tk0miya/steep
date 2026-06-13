@@ -183,6 +183,12 @@ module Steep
     # Apply assertion-style guard narrowing to the env after the call.
     def apply_assert_narrowing: (Parser::AST::Node send_node, Pair) -> Pair
 
+    # Compute the narrow type for the truthy branch of an assert.
+    def assert_narrowed_type: (String operator, AST::Types::t subject_type, AST::Types::t sub_type) -> AST::Types::t?
+
+    # Apply assert narrowing on a non-self target.
+    def assert_refine_env: (TypeInference::TypeEnv, Parser::AST::Node, AST::Types::t) -> TypeInference::TypeEnv?
+
     # The entrypoint to type check method calls, which may be with blocks
     #
     # * `send_node` can be `:send`, `:super`, or `:zsuper`

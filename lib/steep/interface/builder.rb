@@ -773,12 +773,14 @@ module Steep
         return method_type unless match
 
         subject = match[1] or raise
+        op_raw = match[2] or raise
+        operator = AST::Types::Logic::Guard.normalize_operator(op_raw)
         type_name = match[3] or raise
 
         resolved = resolve_guard_type(type_name, definition, method_def)
         return method_type unless resolved
 
-        assert = AST::Types::Logic::Assert.new(subject: subject, type: resolved)
+        assert = AST::Types::Logic::Assert.new(subject: subject, operator: operator, type: resolved)
         method_type.with(type: method_type.type.with(return_type: assert))
       end
 
