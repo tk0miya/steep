@@ -4897,15 +4897,17 @@ module Steep
 
       when :const_pattern
         const_node, inner = pattern_node.children
-        _, constr = constr.synthesize(const_node).to_ary
-        constr, b = constr.check_pattern(inner, AST::Builtin.any_type)
+        const_type, constr = constr.synthesize(const_node).to_ary
+        narrowed = narrow_scrutinee_by_const(scrutinee_type, const_type)
+        constr, b = constr.check_pattern(inner, narrowed)
         bindings.merge!(b)
         [constr, bindings]
 
       when :match_as
         inner, var_node = pattern_node.children
+        narrowed = narrow_scrutinee_via_pattern(inner, scrutinee_type)
         constr, b1 = constr.check_pattern(inner, scrutinee_type)
-        constr, b2 = constr.check_pattern(var_node, scrutinee_type)
+        constr, b2 = constr.check_pattern(var_node, narrowed)
         bindings.merge!(b1).merge!(b2)
         [constr, bindings]
 
@@ -4937,6 +4939,36 @@ module Steep
         end
         [constr, bindings]
       end
+    end
+
+    # Compute the type that `scrutinee_type` is narrowed to when the given pattern matches.
+    #
+    # Returns `scrutinee_type` unchanged for patterns that we don't (yet) narrow on
+    # (e.g. literal patterns, match_var, hash/array patterns).
+    def narrow_scrutinee_via_pattern(pattern_node, scrutinee_type)
+      case pattern_node.type
+      when :const
+        const_type, _ = synthesize(pattern_node).to_ary
+        narrow_scrutinee_by_const(scrutinee_type, const_type)
+      when :const_pattern
+        const_node, _ = pattern_node.children
+        const_type, _ = synthesize(const_node).to_ary
+        narrow_scrutinee_by_const(scrutinee_type, const_type)
+      when :nil
+        narrow_scrutinee_by_const(scrutinee_type, AST::Types::Name::Singleton.new(name: AST::Builtin::NilClass.module_name))
+      else
+        scrutinee_type
+      end
+    end
+
+    # Narrow `scrutinee_type` to the part that satisfies `Const === value`, given the
+    # const node's typed value `const_type` (typically a Name::Singleton).
+    def narrow_scrutinee_by_const(scrutinee_type, const_type)
+      return scrutinee_type unless const_type.is_a?(AST::Types::Name::Singleton)
+
+      interpreter = TypeInference::LogicTypeInterpreter.new(subtyping: checker, typing: typing, config: builder_config)
+      truthy, _ = interpreter.type_case_select(scrutinee_type, const_type.name)
+      truthy || scrutinee_type
     end
 
     # Compute element types for an `:array_pattern` against `scrutinee_type`.
