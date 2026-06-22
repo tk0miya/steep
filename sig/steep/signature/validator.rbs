@@ -13,6 +13,12 @@ module Steep
 
       @validator: RBS::Validator?
 
+      @validator_validate_type_cache: Hash[RBS::Types::t, true]
+
+      @deprecation_cache: Hash[RBS::TypeName, [RBS::AST::Annotation, String?]?]
+
+      @type_application_cache: Hash[Array[untyped], Array[[AST::Types::t, Interface::TypeParam, Subtyping::Result::t]]]
+
       # Stack of `self_type`, `class_type`, `instance_type` tuple
       #
       attr_reader context: Array[[AST::Types::t?, AST::Types::t?, AST::Types::t?]]
@@ -54,6 +60,15 @@ module Steep
       # Doesn't validate descendant types.
       #
       private def validate_type_application_constraints: (RBS::TypeName type_name, Array[RBS::AST::TypeParam] type_params, Array[RBS::Types::t] type_args, location: RBS::Location[untyped, untyped]?) -> void
+
+      # Cached form of computing the list of failures for `validate_type_application_constraints`.
+      #
+      # The decision (which type arguments fail their bound checks) depends only on
+      # `(type_name, type_args, latest_context, checker.variable_bounds)`.
+      #
+      private def type_application_constraint_failures: (RBS::TypeName type_name, Array[RBS::AST::TypeParam] type_params, Array[RBS::Types::t] type_args) -> Array[[AST::Types::t, Interface::TypeParam, Subtyping::Result::t]]
+
+      private def compute_type_application_constraint_failures: (RBS::TypeName type_name, Array[RBS::AST::TypeParam] type_params, Array[RBS::Types::t] type_args) -> Array[[AST::Types::t, Interface::TypeParam, Subtyping::Result::t]]
 
       # Validate type application
       #

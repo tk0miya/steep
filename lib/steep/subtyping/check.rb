@@ -56,6 +56,10 @@ module Steep
         @bounds.pop
       end
 
+      def variable_bounds_snapshot
+        @bounds.dup
+      end
+
       def variable_upper_bound(name)
         @bounds.reverse_each do |hash|
           if hash.key?(name)

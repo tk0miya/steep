@@ -35,6 +35,10 @@ module Steep
 
       def push_variable_bounds: [A] (Array[Interface::TypeParam] | Hash[Symbol, AST::Types::t?] params) { () -> A } -> A
 
+      # Snapshot of the current variable bounds stack, suitable for use as a cache key.
+      #
+      def variable_bounds_snapshot: () -> Array[Hash[Symbol, AST::Types::t?]]
+
       def variable_upper_bound: (Symbol name) -> AST::Types::t?
 
       def variable_upper_bounds: () -> Hash[Symbol, AST::Types::t?]

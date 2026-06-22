@@ -11,6 +11,9 @@ module Steep
         @checker = checker
         @errors = []
         @context = []
+        @validator_validate_type_cache = {}
+        @deprecation_cache = {}
+        @type_application_cache = {}
       end
 
       def push_context(self_type: latest_context[0], class_type: latest_context[1], instance_type: latest_context[2])
@@ -70,47 +73,72 @@ module Steep
       end
 
       def validate_type_application_constraints(type_name, type_params, type_args, location:)
-        if type_params.size == type_args.size
-          subst = Interface::Substitution.build(
-            type_params.map(&:name),
-            type_args.map {|type| factory.type(type) }
+        return unless type_params.size == type_args.size
+
+        failures = type_application_constraint_failures(type_name, type_params, type_args)
+
+        failures.each do |arg_type, type_param, result|
+          @errors << Diagnostic::Signature::UnsatisfiableTypeApplication.new(
+            type_name: type_name,
+            type_arg: arg_type,
+            type_param: type_param,
+            result: result,
+            location: location
           )
+        end
+      end
 
-          type_params.zip(type_args).each do |param, arg|
-            arg or raise
+      # The decision (= which type arguments fail their upper-bound checks) depends only on
+      # (type_name, type_args, latest_context, checker.variable_bounds). The diagnostic's
+      # `location` is supplied by the caller, so caching only the failure list is safe across
+      # multiple occurrences of the same type at different source locations.
+      def type_application_constraint_failures(type_name, type_params, type_args)
+        cache_key = [type_name, type_args, latest_context, checker.variable_bounds_snapshot]
+        @type_application_cache.fetch(cache_key) do
+          @type_application_cache[cache_key] =
+            compute_type_application_constraint_failures(type_name, type_params, type_args)
+        end
+      end
 
-            if param.upper_bound_type
-              upper_bound_type = factory.type(param.upper_bound_type).subst(subst)
-              arg_type = factory.type(arg)
+      def compute_type_application_constraint_failures(type_name, type_params, type_args)
+        failures = [] #: Array[[AST::Types::t, Interface::TypeParam, Subtyping::Result::t]]
 
-              constraints = Subtyping::Constraints.empty
+        subst = Interface::Substitution.build(
+          type_params.map(&:name),
+          type_args.map {|type| factory.type(type) }
+        )
 
-              self_type, class_type, instance_type = latest_context
+        self_type, class_type, instance_type = latest_context
 
-              checker.check(
-                Subtyping::Relation.new(sub_type: arg_type, super_type: upper_bound_type),
-                self_type: self_type,
-                class_type: class_type,
-                instance_type: instance_type,
-                constraints: constraints
-              ).else do |result|
-                @errors << Diagnostic::Signature::UnsatisfiableTypeApplication.new(
-                  type_name: type_name,
-                  type_arg: arg_type,
-                  type_param: Interface::TypeParam.new(
-                    name: param.name,
-                    upper_bound: upper_bound_type,
-                    variance: param.variance,
-                    unchecked: param.unchecked?,
-                    default_type: factory.type_opt(param.default_type)
-                  ),
-                  result: result,
-                  location: location
-                )
-              end
-            end
+        type_params.zip(type_args).each do |param, arg|
+          arg or raise
+          next unless param.upper_bound_type
+
+          upper_bound_type = factory.type(param.upper_bound_type).subst(subst)
+          arg_type = factory.type(arg)
+
+          checker.check(
+            Subtyping::Relation.new(sub_type: arg_type, super_type: upper_bound_type),
+            self_type: self_type,
+            class_type: class_type,
+            instance_type: instance_type,
+            constraints: Subtyping::Constraints.empty
+          ).else do |result|
+            failures << [
+              arg_type,
+              Interface::TypeParam.new(
+                name: param.name,
+                upper_bound: upper_bound_type,
+                variance: param.variance,
+                unchecked: param.unchecked?,
+                default_type: factory.type_opt(param.default_type)
+              ),
+              result
+            ]
           end
         end
+
+        failures
       end
 
       def validate_type_application(type)
@@ -149,7 +177,16 @@ module Steep
       def validate_type(type)
         Steep.logger.debug { "#{Location.to_string type.location}: Validating #{type}..." }
 
-        validator.validate_type(type, context: nil)
+        # `validator.validate_type` is a pure function of `(type, env)` when called with
+        # `context: nil`. env is fixed for the validator's lifetime, so we cache by `type`.
+        # We only cache successful validations: if it raises, the exception (which carries the
+        # type's location) must propagate to the active `rescue_validation_errors` so the
+        # diagnostic is bound to the correct location.
+        unless @validator_validate_type_cache.key?(type)
+          validator.validate_type(type, context: nil)
+          @validator_validate_type_cache[type] = true
+        end
+
         validate_type_0(type)
       end
 
@@ -174,7 +211,16 @@ module Steep
       end
 
       def validate_type_name_deprecation(type_name, location)
-        if (_, message = AnnotationsHelper.deprecated_type_name?(type_name, env))
+        # The deprecation lookup depends only on `(type_name, env)`. env is fixed for the
+        # validator's lifetime. We cache the lookup result and re-stamp diagnostics with the
+        # caller-supplied location so multiple occurrences of the same name produce distinct
+        # diagnostics pointing at their own locations.
+        unless @deprecation_cache.key?(type_name)
+          @deprecation_cache[type_name] = AnnotationsHelper.deprecated_type_name?(type_name, env)
+        end
+
+        if (result = @deprecation_cache[type_name])
+          _, message = result
           @errors << Diagnostic::Signature::DeprecatedTypeName.new(type_name, message, location: location)
         end
       end
