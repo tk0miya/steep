@@ -1336,6 +1336,43 @@ module Steep
         def header_line: () -> String
       end
 
+      # The `when` clauses of a `case` expression do not cover all the types of a union typed condition.
+      #
+      # The `type` is the residual union type that is not handled by any `when` clause.
+      # Add the missing `when` clauses, or an `else` clause to handle the remaining values.
+      #
+      # ### Ruby code
+      #
+      # ```ruby
+      # # @type var x: String | Integer | Symbol
+      # x = ""
+      #
+      # case x
+      # when String
+      #   "string"
+      # when Integer
+      #   "integer"
+      # end
+      # ```
+      #
+      # ### Diagnostic
+      #
+      # ```
+      # test.rb:4:0: [warning] The branches do not cover all the types of the condition; `::Symbol` is not handled
+      # │ Diagnostic ID: Ruby::IncompleteTypeCaseMatch
+      # │
+      # └ case x
+      #   ~~~~
+      # ```
+      #
+      class IncompleteTypeCaseMatch < Base
+        attr_reader type: AST::Types::t
+
+        def initialize: (node: Parser::AST::Node, type: AST::Types::t, ?location: location) -> void
+
+        def header_line: () -> String
+      end
+
       # The block parameter has non-proc type.
       #
       # ### Ruby code

@@ -727,6 +727,19 @@ module Steep
         end
       end
 
+      class IncompleteTypeCaseMatch < Base
+        attr_reader :type
+
+        def initialize(node:, type:, location: node.location.expression)
+          super(node: node, location: location)
+          @type = type
+        end
+
+        def header_line
+          "The branches do not cover all the types of the condition; `#{type}` is not handled"
+        end
+      end
+
       class ProcTypeExpected < Base
         attr_reader :type
 
@@ -1108,6 +1121,7 @@ module Steep
             IncompatibleAnnotation => :hint,
             IncompatibleArgumentForwarding => :warning,
             IncompatibleAssignment => :hint,
+            IncompleteTypeCaseMatch => :hint,
             InsufficientKeywordArguments => :error,
             InsufficientPositionalArguments => :error,
             InsufficientTypeArgument => :hint,
@@ -1173,6 +1187,7 @@ module Steep
             IncompatibleAnnotation => :error,
             IncompatibleArgumentForwarding => :error,
             IncompatibleAssignment => :error,
+            IncompleteTypeCaseMatch => :warning,
             InsufficientKeywordArguments => :error,
             InsufficientPositionalArguments => :error,
             InsufficientTypeArgument => :error,
@@ -1237,6 +1252,7 @@ module Steep
             IncompatibleAnnotation => nil,
             IncompatibleArgumentForwarding => :information,
             IncompatibleAssignment => :hint,
+            IncompleteTypeCaseMatch => :hint,
             InsufficientKeywordArguments => :information,
             InsufficientPositionalArguments => :information,
             InsufficientTypeArgument => nil,

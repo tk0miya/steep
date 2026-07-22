@@ -2992,6 +2992,17 @@ class TypeCheckTest < Minitest::Test
           diagnostics:
           - range:
               start:
+                line: 1
+                character: 4
+              end:
+                line: 1
+                character: 8
+            severity: ERROR
+            message: The branches do not cover all the types of the condition; `nil` is not
+              handled
+            code: Ruby::IncompleteTypeCaseMatch
+          - range:
+              start:
                 line: 6
                 character: 2
               end:

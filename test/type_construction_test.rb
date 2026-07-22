@@ -3607,9 +3607,9 @@ EOF
       with_standard_construction(checker, source) do |construction, typing|
         pair = construction.synthesize(source.node)
 
-        assert_equal 1, typing.errors.size
+        assert_equal 2, typing.errors.size
 
-        typing.errors[0].tap do |error|
+        typing.errors.find {|e| e.is_a?(Diagnostic::Ruby::IncompatibleAnnotation) }.tap do |error|
           assert_instance_of Diagnostic::Ruby::IncompatibleAnnotation, error
           assert_equal dig(source.node, 1, 1, 1), error.node
         end
@@ -3634,9 +3634,38 @@ EOF
       with_standard_construction(checker, source) do |construction, typing|
         pair = construction.synthesize(source.node)
 
-        assert_no_error typing
+        assert_typing_error(typing, size: 1) do |errors|
+          assert_any!(errors) do |error|
+            assert_instance_of Diagnostic::Ruby::IncompleteTypeCaseMatch, error
+            assert_equal parse_type("::Integer"), error.type
+          end
+        end
 
         assert_equal parse_type("::Integer?"), pair.type
+      end
+    end
+  end
+
+  def test_case_non_exhaustive_with_else
+    with_checker do |checker|
+      source = parse_ruby(<<EOF)
+# @type var x: String | Integer
+x = ""
+
+y = case x
+when String
+  3
+else
+  4
+end
+EOF
+
+      with_standard_construction(checker, source) do |construction, typing|
+        pair = construction.synthesize(source.node)
+
+        assert_no_error typing
+
+        assert_equal parse_type("::Integer"), pair.type
       end
     end
   end
@@ -3705,6 +3734,54 @@ EOF
         assert_no_error typing
 
         assert_equal parse_type("::Integer"), pair.type
+      end
+    end
+  end
+
+  def test_case_non_exhaustive_partial_union
+    with_checker do |checker|
+      source = parse_ruby(<<-RUBY)
+# @type var x: String | Integer | Symbol
+x = ""
+
+y = case x
+    when String
+      1
+    end
+      RUBY
+
+      with_standard_construction(checker, source) do |construction, typing|
+        pair = construction.synthesize(source.node)
+
+        assert_typing_error(typing, size: 1) do |errors|
+          assert_any!(errors) do |error|
+            assert_instance_of Diagnostic::Ruby::IncompleteTypeCaseMatch, error
+            assert_equal parse_type("::Integer | ::Symbol"), error.type
+          end
+        end
+
+        assert_equal parse_type("::Integer?"), pair.type
+      end
+    end
+  end
+
+  def test_case_non_exhaustive_without_narrowing
+    with_checker do |checker|
+      source = parse_ruby(<<-RUBY)
+# @type var x: String | Integer
+x = 1
+
+y = case x
+    when 1..10
+      1
+    end
+      RUBY
+
+      with_standard_construction(checker, source) do |construction, typing|
+        construction.synthesize(source.node)
+
+        # `Range#===` does not narrow the union type, so exhaustiveness is not reported.
+        assert_no_error typing
       end
     end
   end
@@ -6388,7 +6465,10 @@ x + ""       # <= error! (x: String | Integer | nil)
 
       with_standard_construction(checker, source) do |construction, typing|
         construction.synthesize(source.node)
-        assert_typing_error typing, size: 1
+        assert_typing_error typing, size: 2 do |errors|
+          assert_any(errors) {|e| e.is_a?(Diagnostic::Ruby::NoMethod) }
+          assert_any(errors) {|e| e.is_a?(Diagnostic::Ruby::IncompleteTypeCaseMatch) }
+        end
       end
     end
   end
@@ -9641,6 +9721,8 @@ object = TestClass.new
 case x = object.value
 when String
   object.value + ""
+else
+  ""
 end
 RUBY
 

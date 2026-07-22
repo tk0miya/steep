@@ -3,6 +3,17 @@
   diagnostics:
   - range:
       start:
+        line: 5
+        character: 0
+      end:
+        line: 5
+        character: 4
+    severity: ERROR
+    message: The branches do not cover all the types of the condition; `::Symbol`
+      is not handled
+    code: Ruby::IncompleteTypeCaseMatch
+  - range:
+      start:
         line: 7
         character: 4
       end:
@@ -41,6 +52,17 @@
     severity: ERROR
     message: Type `1` does not have method `foobar`
     code: Ruby::NoMethod
+  - range:
+      start:
+        line: 20
+        character: 0
+      end:
+        line: 20
+        character: 4
+    severity: ERROR
+    message: The branches do not cover all the types of the condition; `(1 | ::Integer
+      | ::Symbol)` is not handled
+    code: Ruby::IncompleteTypeCaseMatch
   - range:
       start:
         line: 23

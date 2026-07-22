@@ -114,7 +114,7 @@ module Steep
 
       attr_reader :location, :node, :condition_node, :when_nodes, :else_node
       attr_reader :initial_constr, :logic, :clause_results, :else_result
-      attr_reader :assignment_node, :value_node, :var_name
+      attr_reader :assignment_node, :value_node, :var_name, :condition_type
 
       def initialize(node, logic)
         @node = node
@@ -130,6 +130,7 @@ module Steep
         @clause_results = []
 
         type, constr = yield(condition_node)
+        @condition_type = type
 
         @var_name = "__case_when:#{SecureRandom.alphanumeric(5)}__".to_sym
         @value_node, @assignment_node = rewrite_condition_node(var_name, condition_node)
@@ -235,6 +236,8 @@ module Steep
               unreachable: false    # Unused
             )
           else
+            check_exhaustiveness(next_constr)
+
             results << LogicTypeInterpreter::Result.new(
               type: AST::Builtin.nil_type,
               env: next_constr.context.type_env,
@@ -252,6 +255,27 @@ module Steep
           types,
           envs
         ]
+      end
+
+      def check_exhaustiveness(next_constr)
+        return unless condition_type.is_a?(AST::Types::Union)
+
+        residual_type = next_constr.context.type_env[var_name]
+        return unless residual_type
+        return if residual_type.is_a?(AST::Types::Bot)
+
+        # Report only when the `when` clauses actually narrowed the condition type.
+        # If nothing was narrowed away, the clauses are not type-based (e.g. `Range#===`)
+        # and exhaustiveness over the union is not meaningful.
+        return unless initial_constr.no_subtyping?(sub_type: condition_type, super_type: residual_type)
+
+        typing.add_error(
+          Diagnostic::Ruby::IncompleteTypeCaseMatch.new(
+            node: node,
+            type: residual_type,
+            location: location.keyword
+          )
+        )
       end
 
       def has_else_clause?

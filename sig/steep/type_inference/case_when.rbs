@@ -84,6 +84,10 @@ module Steep
       #
       attr_reader initial_constr: TypeConstruction
 
+      # The type of `#condition_node`
+      #
+      attr_reader condition_type: AST::Types::t
+
       # The public API
       #
       # It type checks given `case` node with condition node, and records types and errors of sub nodes.
@@ -97,6 +101,14 @@ module Steep
       def else_clause: () { (Node, TypeConstruction) -> Pair } -> void
 
       def result: () -> [Array[AST::Types::t], Array[TypeEnv]]
+
+      # Reports `Diagnostic::Ruby::IncompleteTypeCaseMatch` if the `when` clauses
+      # do not cover all the types of a union typed condition.
+      #
+      # `next_constr` is the type construction after the last `when` clause, whose
+      # type environment holds the residual type of `#var_name`.
+      #
+      def check_exhaustiveness: (TypeConstruction next_constr) -> void
 
       # Assign type of `value_node`
       def propagate_value_node_type: (TypeEnv) -> TypeEnv?
