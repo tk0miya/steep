@@ -276,19 +276,20 @@ module Steep
           shape = Interface::Shape.new(type: AST::Types::Name::Singleton.new(name: type_name), private: true)
           definition = factory.definition_builder.build_singleton(type_name)
 
+          # Populate lazily: for a type with hundreds of inherited methods, most are never
+          # queried on any single Ruby source file. Building the overload list eagerly would
+          # do per-method RBS→Steep type conversion + `replace_*` rewrites for every one of
+          # them just to fill the cache, dominating cold-path shape construction cost.
           definition.methods.each do |name, method|
-            Steep.logger.tagged "method = #{type_name}.#{name}" do
-              overloads = method.defs.map do |type_def|
+            shape.methods[name] =
+              build_lazy_entry(type_name, name, method) do |type_def|
                 method_name = method_name_for(type_def, name)
                 method_type = factory.method_type(type_def.type)
                 method_type = replace_primitive_method(method_name, type_def, method_type)
                 method_type = replace_kernel_class(method_name, type_def, method_type) { AST::Builtin::Class.instance_type }
                 method_type = add_implicitly_returns_nil(type_def.each_annotation, method_type)
-                Shape::MethodOverload.new(method_type, [type_def])
+                method_type
               end
-
-              shape.methods[name] = Interface::Shape::Entry.new(method_name: name, private_method: method.private?, overloads: overloads)
-            end
           end
 
           shape
@@ -308,9 +309,10 @@ module Steep
 
           definition or raise
 
+          # Populate lazily; see comment in `singleton_shape`.
           definition.methods.each do |name, method|
-            Steep.logger.tagged "method = #{type_name}##{name}" do
-              overloads = method.defs.map do |type_def|
+            shape.methods[name] =
+              build_lazy_entry(type_name, name, method) do |type_def|
                 method_name = method_name_for(type_def, name)
                 method_type = factory.method_type(type_def.type)
                 method_type = replace_primitive_method(method_name, type_def, method_type)
@@ -318,14 +320,21 @@ module Steep
                   method_type = replace_kernel_class(method_name, type_def, method_type) { AST::Types::Name::Singleton.new(name: type_name) }
                 end
                 method_type = add_implicitly_returns_nil(type_def.each_annotation, method_type)
-                Shape::MethodOverload.new(method_type, [type_def])
+                method_type
               end
-
-              shape.methods[name] = Interface::Shape::Entry.new(method_name: name, private_method: method.private?, overloads: overloads)
-            end
           end
 
           shape
+        end
+      end
+
+      def build_lazy_entry(type_name, method_name, method, &convert_type_def)
+        Interface::Shape::Entry.new(method_name: method_name, private_method: method.private?) do
+          Steep.logger.tagged "method = #{type_name}##{method_name}" do
+            method.defs.map do |type_def|
+              Shape::MethodOverload.new(convert_type_def.call(type_def), [type_def])
+            end
+          end
         end
       end
 
@@ -347,7 +356,7 @@ module Steep
             private_method ||= entry.private_method?
           end
 
-          shape.methods[method_name] = Interface::Shape::Entry.new(method_name: method_name, private_method: private_method) do
+          shape.methods[method_name] = Interface::Shape::Entry.new(method_name: method_name, private_method: private_method, definitely_defined: false) do
             overloadss.inject do |overloads1, overloads2|
               # @type break: nil
 

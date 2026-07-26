@@ -89,6 +89,12 @@ module Steep
       #
       def singleton_shape: (RBS::TypeName) -> Shape
 
+      # Build a lazy `Interface::Shape::Entry` for the given RBS method. The block converts
+      # a single `RBS::Definition::Method::TypeDef` to the corresponding Steep `MethodType`,
+      # and is called only when the entry's overloads are first accessed.
+      #
+      def build_lazy_entry: (RBS::TypeName, Symbol method_name, RBS::Definition::Method method) { (RBS::Definition::Method::TypeDef) -> MethodType } -> Shape::Entry
+
       def union_shape: (AST::Types::t, Array[Shape]) -> Shape?
 
       def intersection_shape: (AST::Types::t, Array[Shape]) -> Shape?

@@ -60,11 +60,17 @@ module Steep
       class Entry
         attr_reader :method_name
 
-        def initialize(overloads: nil, private_method:, method_name:, &block)
+        # When `definitely_defined` is true, `has_method_type?` returns true without invoking
+        # the generator. Use this whenever the caller knows a-priori that the generator (or the
+        # supplied `overloads:`) is non-nil — the typical case for a Shape built directly from
+        # an RBS definition. Pass `definitely_defined: false` when the generator may legitimately
+        # yield nil overloads (e.g. union-merge that fails to intersect).
+        def initialize(overloads: nil, private_method:, method_name:, definitely_defined: true, &block)
           @overloads = overloads
           @generator = block
           @private_method = private_method
           @method_name = method_name
+          @definitely_defined = definitely_defined
         end
 
         def force
@@ -84,6 +90,8 @@ module Steep
         end
 
         def has_method_type?
+          return true if @overloads
+          return true if @definitely_defined
           force
           @overloads ? true : false
         end
@@ -157,8 +165,8 @@ module Steep
 
         def each_name(&block)
           if block
-            each do |name, _|
-              yield name
+            methods.each_key do |name|
+              yield name if key?(name)
             end
           else
             enum_for :each_name
