@@ -44,7 +44,7 @@ module Steep
 
       def ruby_symbols(target, path, line:, column:, result:)
         source = service.source_files.fetch(path, nil) or return
-        typing, subtyping = type_check(target, path: path, content: source.content, line: line, column: column) || return
+        typing, subtyping = type_check(target, path: path, file: source, line: line, column: column) || return
 
         locator = Locator::Ruby.new(typing.source)
 
@@ -160,14 +160,16 @@ module Steep
         end
       end
 
-      def type_check(target, path:, content:, line:, column:)
+      def type_check(target, path:, file:, line:, column:)
         subtyping = service.signature_services.fetch(target.name).current_subtyping or return
-        source = Source.parse(content, path: path, factory: subtyping.factory)
+        extracted = RubyExtractor.extract(file)
+        local_variable_types = extracted.local_variable_types(subtyping.factory)
+        source = Source.parse(extracted.code, path: path, factory: subtyping.factory, locals: local_variable_types.keys)
         source = source.without_unrelated_defs(line: line, column: column)
         resolver = RBS::Resolver::ConstantResolver.new(builder: subtyping.factory.definition_builder)
         pos = source.buffer.loc_to_pos([line, column])
         [
-          Services::TypeCheckService.type_check(source: source, subtyping: subtyping, constant_resolver: resolver, cursor: pos),
+          Services::TypeCheckService.type_check(source: source, subtyping: subtyping, constant_resolver: resolver, cursor: pos, local_variable_types: local_variable_types),
           subtyping
         ]
       rescue

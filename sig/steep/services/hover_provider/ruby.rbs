@@ -14,7 +14,7 @@ module Steep
         def method_definition_for: (AST::Types::Factory factory, ::RBS::TypeName type_name, singleton_method: Symbol) -> ::RBS::Definition::Method
                                  | (AST::Types::Factory factory, ::RBS::TypeName type_name, instance_method: Symbol) -> ::RBS::Definition::Method
 
-        def typecheck: (Project::Target target, path: Pathname, content: String, line: Integer, column: Integer) -> [Typing, Subtyping::Check]?
+        def typecheck: (Project::Target target, path: Pathname, file: TypeCheckService::SourceFile, line: Integer, column: Integer) -> [Typing, Subtyping::Check]?
 
         def method_name_from_method: (TypeInference::Context::MethodContext context, builder: ::RBS::DefinitionBuilder) -> method_name
 

@@ -5,9 +5,13 @@ class TypeCheckServiceTest < Minitest::Test
 
   include TestHelper
 
+  include ShellHelper
+
   ContentChange: untyped
 
   TypeCheckService: untyped
+
+  def dirs: () -> untyped
 
   def project: () -> untyped
 
@@ -74,4 +78,18 @@ class TypeCheckServiceTest < Minitest::Test
   def test_typecheck_source__ancestor_error_with_library_location: () -> untyped
 
   def test_typecheck_source__ancestor_error_with_user_file_location: () -> untyped
+
+  def test_html_erb_locals__type_check: () -> untyped
+
+  def html_erb_service: (*untyped paths) -> untyped
+
+  def test_html_erb_locals__namespaced_type: () -> untyped
+
+  def test_html_erb_locals__unknown_type_name: () -> untyped
+
+  def test_html_erb_locals__type_var_annotation_takes_precedence: () -> untyped
+
+  def test_html_erb__diagnostic_position: () -> untyped
+
+  def test_erb__invalid_encoding: () -> untyped
 end

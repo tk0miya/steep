@@ -32,7 +32,10 @@ module Steep
 
       def env: () -> Environment
 
-      def initialize: (source: Source, subtyping: Subtyping::Check) -> void
+      # Types of the local variables defined outside of the source code
+      attr_reader local_variable_types: Hash[Symbol, AST::Types::t]
+
+      def initialize: (source: Source, subtyping: Subtyping::Check, ?local_variable_types: Hash[Symbol, AST::Types::t]) -> void
 
       # 1-origin line, 0-origin column
       #

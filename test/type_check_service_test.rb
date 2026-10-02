@@ -3,9 +3,14 @@ require_relative "test_helper"
 class TypeCheckServiceTest < Minitest::Test
   include Steep
   include TestHelper
+  include ShellHelper
 
   ContentChange = Services::ContentChange
   TypeCheckService = Services::TypeCheckService
+
+  def dirs
+    @dirs ||= []
+  end
 
   def project
     @project ||= Project.new(steepfile_path: Pathname.pwd + "Steepfile").tap do |project|
@@ -992,4 +997,145 @@ RUBY
     end
   end
 
+  def test_html_erb_locals__type_check
+    in_tmpdir do
+      project = Project.new(steepfile_path: current_dir + "Steepfile")
+      Project::DSL.parse(project, <<~RUBY)
+        target :lib do
+          check "lib/hello.html.erb", "lib/other.html.erb"
+          signature "sig"
+        end
+      RUBY
+
+      service = Services::TypeCheckService.new(project: project)
+      service.update(
+        changes: {
+          Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
+<%# locals: (title:, icon: nil) %><%#: (title: String, icon: String?) %>
+<h1><%= title + 1 %></h1>
+<%= icon.upcase %>
+ERB
+          Pathname("lib/other.html.erb") => [ContentChange.string("<%= title %>\n")],
+        }
+      ) {}
+
+      target = project.targets.first or raise
+      hello = service.typecheck_source(path: Pathname("lib/hello.html.erb"), target: target) or raise
+      assert_equal [Diagnostic::Ruby::ArgumentTypeMismatch, Diagnostic::Ruby::NoMethod], hello.diagnostics.map(&:class)
+
+      # The types are given only for the file
+      other = service.typecheck_source(path: Pathname("lib/other.html.erb"), target: target) or raise
+      assert_equal [Diagnostic::Ruby::NoMethod], other.diagnostics.map(&:class)
+    end
+  end
+
+  def html_erb_service(*paths)
+    project = Project.new(steepfile_path: current_dir + "Steepfile")
+    Project::DSL.parse(project, <<~RUBY)
+      target :lib do
+        check #{paths.map {|path| path.to_s.inspect }.join(", ")}
+        signature "sig"
+      end
+    RUBY
+
+    [Services::TypeCheckService.new(project: project), project.targets.first || raise]
+  end
+
+  def test_html_erb_locals__namespaced_type
+    in_tmpdir do
+      (current_dir + "sig").mkpath
+      (current_dir + "sig/foo.rbs").write(<<~RBS)
+        module Foo
+          class Bar
+            def size: () -> Integer
+          end
+        end
+      RBS
+
+      service, target = html_erb_service("lib/hello.html.erb")
+      service.update(
+        changes: {
+          Pathname("sig/foo.rbs") => [ContentChange.string((current_dir + "sig/foo.rbs").read)],
+          Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
+<%# locals: (bar:) %><%#: (bar: Foo::Bar) %>
+<%= bar.size.upcase %>
+ERB
+        }
+      ) {}
+
+      hello = service.typecheck_source(path: Pathname("lib/hello.html.erb"), target: target) or raise
+      assert_equal [Diagnostic::Ruby::NoMethod], hello.diagnostics.map(&:class)
+    end
+  end
+
+  def test_html_erb_locals__unknown_type_name
+    in_tmpdir do
+      service, target = html_erb_service("lib/hello.html.erb")
+      service.update(
+        changes: {
+          Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
+<%# locals: (bar:) %><%#: (bar: Foo::Bar) %>
+<%= bar.size %>
+ERB
+        }
+      ) {}
+
+      hello = service.typecheck_source(path: Pathname("lib/hello.html.erb"), target: target) or raise
+      # The type is `untyped` if the name is unknown
+      assert_empty hello.diagnostics
+    end
+  end
+
+  def test_html_erb_locals__type_var_annotation_takes_precedence
+    in_tmpdir do
+      service, target = html_erb_service("lib/hello.html.erb")
+      service.update(
+        changes: {
+          Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
+<%# locals: (title:) %><%#: (title: String) %>
+<% # @type var title: Integer %>
+<%= title + 1 %>
+<%= title.upcase %>
+ERB
+        }
+      ) {}
+
+      hello = service.typecheck_source(path: Pathname("lib/hello.html.erb"), target: target) or raise
+      # `title` is `Integer`, so `upcase` is not defined
+      assert_equal [Diagnostic::Ruby::NoMethod], hello.diagnostics.map(&:class)
+    end
+  end
+
+  def test_html_erb__diagnostic_position
+    in_tmpdir do
+      service, target = html_erb_service("lib/hello.html.erb")
+      service.update(
+        changes: {
+          Pathname("lib/hello.html.erb") => [ContentChange.string("<p>日本語</p>\n<ul><li><%= 1 + \"\" %></li></ul>\n")],
+        }
+      ) {}
+
+      hello = service.typecheck_source(path: Pathname("lib/hello.html.erb"), target: target) or raise
+      diagnostic = hello.diagnostics.first or raise
+      location = diagnostic.location or raise
+
+      assert_equal 2, location.first_line
+      assert_equal "1 + \"\"", location.source
+    end
+  end
+
+  def test_erb__invalid_encoding
+    in_tmpdir do
+      service, target = html_erb_service("lib/hello.erb")
+      service.update(
+        changes: {
+          Pathname("lib/hello.erb") => [ContentChange.string("<%= 1 %>\xff\n")],
+        }
+      ) {}
+
+      # Same as a Ruby file; no diagnostics, and no exceptions
+      hello = service.typecheck_source(path: Pathname("lib/hello.erb"), target: target) or raise
+      assert_empty hello.diagnostics
+    end
+  end
 end

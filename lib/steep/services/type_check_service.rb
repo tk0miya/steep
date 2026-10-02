@@ -259,8 +259,7 @@ module Steep
             subtyping = signature_service.current_subtyping
 
             if subtyping
-              text = source_files.fetch(path).content
-              file = type_check_file(target: target, subtyping: subtyping, path: path, text: text) { signature_service.latest_constant_resolver }
+              file = type_check_file(target: target, subtyping: subtyping, path: path, source_file: source_files.fetch(path)) { signature_service.latest_constant_resolver }
 
               # Keep the content only: the diagnostics and the Typing go to the master through the worker, and are dropped with the file
               source_files[path] = SourceFile.no_data(path: path, content: file.content)
@@ -330,27 +329,29 @@ module Steep
         end
       end
 
-      def type_check_file(target:, subtyping:, path:, text:)
+      def type_check_file(target:, subtyping:, path:, source_file:)
         Steep.logger.tagged "#type_check_file(#{path}@#{target.name})" do
-          source = Source.parse(text, path: path, factory: subtyping.factory)
-          typing = TypeCheckService.type_check(source: source, subtyping: subtyping, constant_resolver: yield, cursor: nil)
+          extracted = RubyExtractor.extract(source_file)
+          local_variable_types = extracted.local_variable_types(subtyping.factory)
+          source = Source.parse(extracted.code, path: path, factory: subtyping.factory, locals: local_variable_types.keys)
+          typing = TypeCheckService.type_check(source: source, subtyping: subtyping, constant_resolver: yield, cursor: nil, local_variable_types: local_variable_types)
           ignores = Source::IgnoreRanges.new(ignores: source.ignores)
-          SourceFile.with_typing(path: path, content: text, node: source.node, typing: typing, ignores: ignores)
+          SourceFile.with_typing(path: path, content: source_file.content, node: source.node, typing: typing, ignores: ignores)
         end
       rescue AnnotationParser::SyntaxError => exn
         error = Diagnostic::Ruby::AnnotationSyntaxError.new(message: exn.message, location: exn.location)
-        SourceFile.with_syntax_error(path: path, content: text, error: error)
+        SourceFile.with_syntax_error(path: path, content: source_file.content, error: error)
       rescue ::Parser::SyntaxError => exn
         error = Diagnostic::Ruby::SyntaxError.new(message: exn.message, location: (_ = exn).diagnostic.location)
-        SourceFile.with_syntax_error(path: path, content: text, error: error)
+        SourceFile.with_syntax_error(path: path, content: source_file.content, error: error)
       rescue EncodingError => exn
         SourceFile.no_data(path: path, content: "")
       rescue RuntimeError => exn
         Steep.log_error(exn)
-        SourceFile.no_data(path: path, content: text)
+        SourceFile.no_data(path: path, content: source_file.content)
       end
 
-      def self.type_check(source:, subtyping:, constant_resolver:, cursor:)
+      def self.type_check(source:, subtyping:, constant_resolver:, cursor:, local_variable_types: {})
         annotations = source.annotations(block: source.node, factory: subtyping.factory, context: nil)
 
         case annotations.self_type
@@ -381,7 +382,8 @@ module Steep
           TypeInference::TypeEnvBuilder::Command::ImportGlobalDeclarations.new(subtyping.factory),
           TypeInference::TypeEnvBuilder::Command::ImportInstanceVariableDefinition.new(definition, subtyping.factory),
           TypeInference::TypeEnvBuilder::Command::ImportInstanceVariableAnnotations.new(annotations),
-          TypeInference::TypeEnvBuilder::Command::ImportLocalVariableAnnotations.new(annotations)
+          TypeInference::TypeEnvBuilder::Command::ImportLocalVariableAnnotations.new(annotations),
+          TypeInference::TypeEnvBuilder::Command::ImportLocalVariableTypes.new(local_variable_types)
         ).build(type_env)
 
         context = TypeInference::Context.new(

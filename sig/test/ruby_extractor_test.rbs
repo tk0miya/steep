@@ -1,0 +1,71 @@
+# Generated from test/ruby_extractor_test.rb with RBS::Inline
+
+class RubyExtractorTest < Minitest::Test
+  include Steep
+
+  RubyExtractor: untyped
+
+  def test_for: () -> untyped
+
+  def test_plain: () -> untyped
+
+  def test_erb: () -> untyped
+
+  def test_erb__statements_are_separated: () -> untyped
+
+  def test_erb__multiline_comment: () -> untyped
+
+  def test_erb__tags: () -> untyped
+
+  def test_erb__code_keeps_annotation: () -> untyped
+
+  def test_erb__not_closed_tags: () -> untyped
+
+  def test_erb__keeps_lines: () -> untyped
+
+  def test_erb__invalid_encoding: () -> untyped
+
+  def test_erb__multibyte: () -> untyped
+
+  def test_html_erb__code: () -> untyped
+
+  def test_html_erb__multibyte_keeps_separators: () -> untyped
+
+  def test_html_erb__locals: () -> untyped
+
+  def test_html_erb__locals_in_nested_tag: () -> untyped
+
+  def test_html_erb__no_locals: () -> untyped
+
+  def test_html_erb__locals_without_types: () -> untyped
+
+  def test_html_erb__locals_partially_typed: () -> untyped
+
+  def test_html_erb__locals_keyword_rest: () -> untyped
+
+  def test_html_erb__invalid_types: () -> untyped
+
+  def test_html_erb__invalid_locals: () -> untyped
+
+  def test_html_erb__types_requires_hash_colon: () -> untyped
+
+  def test_html_erb__ruby_comment: () -> untyped
+
+  def test_html_erb__locals_in_nested_html: () -> untyped
+
+  def test_html_erb__multiline_declaration_is_removed: () -> untyped
+
+  def test_html_erb__requires_space: () -> untyped
+
+  def test_html_erb__locals_boundaries: () -> untyped
+
+  def test_html_erb__types_comment_boundaries: () -> untyped
+
+  def test_html_erb__types_comment_is_the_next_comment: () -> untyped
+
+  def test_html_erb__declaration_is_removed_from_the_code: () -> untyped
+
+  def test_html_erb__first_locals: () -> untyped
+
+  def test_extract: () -> untyped
+end

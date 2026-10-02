@@ -59,7 +59,7 @@ module Steep
       # Collects the declaration name, the method, or the type name written in the RBS file at the position, in the environment of the target
       def rbs_symbols: (Symbol target_name, Pathname path, line: Integer, column: Integer, result: Result) -> void
 
-      def type_check: (Project::Target target, path: Pathname, content: String, line: Integer, column: Integer) -> [Typing, Subtyping::Check]?
+      def type_check: (Project::Target target, path: Pathname, file: TypeCheckService::SourceFile, line: Integer, column: Integer) -> [Typing, Subtyping::Check]?
 
       # Converts a type to an RBS type, or `nil` if the type has no RBS representation
       def rbs_type: (Subtyping::Check subtyping, AST::Types::t type) -> RBS::Types::t?

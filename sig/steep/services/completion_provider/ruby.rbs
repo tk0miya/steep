@@ -19,7 +19,10 @@ module Steep
 
         attr_reader typing: Typing
 
-        def initialize: (source_text: String, path: Pathname, subtyping: Subtyping::Check) -> void
+        # Types of the local variables defined outside of the source code
+        attr_reader local_variable_types: Hash[Symbol, AST::Types::t]
+
+        def initialize: (source_text: String, path: Pathname, subtyping: Subtyping::Check, ?local_variable_types: Hash[Symbol, AST::Types::t]) -> void
 
         def type_check!: (String text, line: Integer, column: Integer) -> void
 

@@ -30,14 +30,16 @@ module Steep
           end
         end
 
-        def typecheck(target, path:, content:, line:, column:)
+        def typecheck(target, path:, file:, line:, column:)
           subtyping = service.signature_services.fetch(target.name).current_subtyping or return
-          source = Source.parse(content, path: path, factory: subtyping.factory)
+          extracted = RubyExtractor.extract(file)
+          local_variable_types = extracted.local_variable_types(subtyping.factory)
+          source = Source.parse(extracted.code, path: path, factory: subtyping.factory, locals: local_variable_types.keys)
           source = source.without_unrelated_defs(line: line, column: column)
           resolver = ::RBS::Resolver::ConstantResolver.new(builder: subtyping.factory.definition_builder)
           pos = source.buffer.loc_to_pos([line, column])
           [
-            Services::TypeCheckService.type_check(source: source, subtyping: subtyping, constant_resolver: resolver, cursor: pos),
+            Services::TypeCheckService.type_check(source: source, subtyping: subtyping, constant_resolver: resolver, cursor: pos, local_variable_types: local_variable_types),
             subtyping
           ]
         rescue
@@ -66,7 +68,7 @@ module Steep
 
         def content_for(target:, path:, line:, column:)
           file = service.source_files[path] or return
-          (typing, subtyping = typecheck(target, path: path, content: file.content, line: line, column: column)) or return
+          (typing, subtyping = typecheck(target, path: path, file: file, line: line, column: column)) or return
           locator = Locator::Ruby.new(typing.source)
           result = locator.find(line, column)
 

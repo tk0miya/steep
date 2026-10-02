@@ -10,11 +10,13 @@ module Steep
         attr_reader :modified_text
         attr_reader :source
         attr_reader :typing
+        attr_reader :local_variable_types
 
-        def initialize(source_text:, path:, subtyping:)
+        def initialize(source_text:, path:, subtyping:, local_variable_types: {})
           @source_text = source_text
           @path = path
           @subtyping = subtyping
+          @local_variable_types = local_variable_types
         end
 
         def type_check!(text, line:, column:)
@@ -22,14 +24,14 @@ module Steep
 
           Steep.measure "parsing" do
             @source = Source
-                        .parse(text, path: path, factory: subtyping.factory)
+                        .parse(text, path: path, factory: subtyping.factory, locals: local_variable_types.keys)
                         .without_unrelated_defs(line: line, column: column)
           end
 
           Steep.measure "typechecking" do
             location = source.buffer.loc_to_pos([line, column])
             resolver = ::RBS::Resolver::ConstantResolver.new(builder: subtyping.factory.definition_builder)
-            @typing = TypeCheckService.type_check(source: source, subtyping: subtyping, constant_resolver: resolver, cursor: location)
+            @typing = TypeCheckService.type_check(source: source, subtyping: subtyping, constant_resolver: resolver, cursor: location, local_variable_types: local_variable_types)
           end
         end
 

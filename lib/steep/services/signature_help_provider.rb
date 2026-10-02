@@ -23,15 +23,16 @@ module Steep
 
       include NodeHelper
 
-      attr_reader :source, :path, :subtyping, :typing, :buffer
+      attr_reader :source, :path, :subtyping, :typing, :buffer, :local_variable_types
 
       def env
         subtyping.factory.env
       end
 
-      def initialize(source:, subtyping:)
+      def initialize(source:, subtyping:, local_variable_types: {})
         @source = source
         @subtyping = subtyping
+        @local_variable_types = local_variable_types
         @buffer = source.buffer
       end
 
@@ -77,7 +78,7 @@ module Steep
         source = self.source.without_unrelated_defs(line: line, column: column)
         resolver = RBS::Resolver::ConstantResolver.new(builder: subtyping.factory.definition_builder)
         pos = self.source.buffer.loc_to_pos([line, column])
-        TypeCheckService.type_check(source: source, subtyping: subtyping, constant_resolver: resolver, cursor: pos)
+        TypeCheckService.type_check(source: source, subtyping: subtyping, constant_resolver: resolver, cursor: pos, local_variable_types: local_variable_types)
       end
 
       def last_argument_nodes_for(argument_nodes:, line:, column:)

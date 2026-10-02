@@ -30,16 +30,32 @@ module Steep
       self.emit_forward_arg = true
     end
 
-    def self.new_parser
-      Prism::Translation::Parser34.new(Builder.new).tap do |parser|
+    # Parser that knows the local variables defined outside of the source code
+    class LocalsAwareParser < Prism::Translation::Parser34
+      attr_reader :locals
+
+      def initialize(builder, locals: [])
+        super(builder)
+        @locals = locals
+      end
+
+      def prism_options
+        options = super
+        options[:scopes] = [locals] unless locals.empty?
+        options
+      end
+    end
+
+    def self.new_parser(locals: [])
+      LocalsAwareParser.new(Builder.new, locals: locals).tap do |parser|
         parser.diagnostics.all_errors_are_fatal = true
         parser.diagnostics.ignore_warnings = true
       end
     end
 
-    def self.parse(source_code, path:, factory:)
+    def self.parse(source_code, path:, factory:, locals: [])
       buffer = ::Parser::Source::Buffer.new(path.to_s, 1, source: source_code)
-      node, comments = new_parser().parse_with_comments(buffer)
+      node, comments = new_parser(locals: locals).parse_with_comments(buffer)
 
       # @type var annotations: Array[AST::Annotation::t]
       annotations = []

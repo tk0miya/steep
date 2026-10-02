@@ -137,7 +137,13 @@ module Steep
               file = service.source_files[relative_path] or return
               subtyping = service.signature_services.fetch(target.name).current_subtyping or return
 
-              provider = Services::CompletionProvider::Ruby.new(source_text: file.content, path: relative_path, subtyping: subtyping)
+              extracted = Services::RubyExtractor.extract(file)
+              provider = Services::CompletionProvider::Ruby.new(
+                source_text: extracted.code,
+                path: relative_path,
+                subtyping: subtyping,
+                local_variable_types: extracted.local_variable_types(subtyping.factory)
+              )
 
               if (prefix_size, items = provider.run_at_comment(line: line, column: column))
                 completion_items = items.map { completion_item(_1) }
@@ -248,11 +254,13 @@ module Steep
           if target = project.target_for_inline_source_path(relative_path) || project.target_for_source_path(relative_path)
             file = service.source_files[relative_path] or return
             subtyping = service.signature_services.fetch(target.name).current_subtyping or return
+            extracted = Services::RubyExtractor.extract(file)
+            local_variable_types = extracted.local_variable_types(subtyping.factory)
             source =
-              Source.parse(file.content, path: file.path, factory: subtyping.factory)
+              Source.parse(extracted.code, path: file.path, factory: subtyping.factory, locals: local_variable_types.keys)
                 .without_unrelated_defs(line: line, column: column)
 
-            provider = Services::SignatureHelpProvider.new(source: source, subtyping: subtyping)
+            provider = Services::SignatureHelpProvider.new(source: source, subtyping: subtyping, local_variable_types: local_variable_types)
 
             if (items, index = provider.run(line: line, column: column))
               signatures = items.map do |item|

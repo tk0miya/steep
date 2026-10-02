@@ -38,6 +38,18 @@ module Steep
           def on_duplicate!: () { (Symbol name, AST::Types::t original, AST::Types::t annotation) -> void } -> self
         end
 
+        # Insert local variable types given from outside of the source code, like the `locals` of ERB templates.
+        #
+        # * The variables declared by `# @type var` annotations are kept as is.
+        #
+        class ImportLocalVariableTypes
+          include _Base
+
+          attr_reader types: Hash[Symbol, AST::Types::t]
+
+          def initialize: (Hash[Symbol, AST::Types::t]) -> void
+        end
+
         # Insert global variable types into type environment from `RBS::Environment`.
         #
         class ImportGlobalDeclarations < RBSBase

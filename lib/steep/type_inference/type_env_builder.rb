@@ -61,6 +61,23 @@ module Steep
           end
         end
 
+        class ImportLocalVariableTypes
+          attr_reader :types
+
+          def initialize(types)
+            @types = types
+          end
+
+          def call(env)
+            # Types given by `# @type var` annotations take precedence
+            local_variable_types = types.each.with_object({}) do |(name, type), hash| #$ Hash[Symbol, [AST::Types::t, AST::Types::t]]
+              hash[name] = [type, type] unless env[name]
+            end
+
+            env.merge(local_variable_types: local_variable_types)
+          end
+        end
+
         class ImportInstanceVariableAnnotations < AnnotationsBase
           def call(env)
             ivar_types = annotations.ivar_type_annotations.transform_values do |annotation|

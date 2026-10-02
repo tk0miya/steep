@@ -545,4 +545,36 @@ RUBY
       assert_equal({ signature_help: nil, syntax_error: true }, response)
     end
   end
+
+  def test_html_erb_locals__signature_help_and_hover
+    in_tmpdir do
+      project = Project.new(steepfile_path: current_dir + "Steepfile")
+      Project::DSL.parse(project, <<~RUBY)
+        target :lib do
+          check "lib/hello.html.erb"
+          signature "sig"
+        end
+      RUBY
+      provider = Server::InteractionProvider.new(service: Services::TypeCheckService.new(project: project))
+
+      provider.service.update(
+        changes: {
+          Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
+<%# locals: (title:) %><%#: (title: String) %>
+<h1><%= title.start_with?("a") %></h1>
+ERB
+        }
+      ) {}
+
+      path = current_dir + "lib/hello.html.erb"
+
+      response = provider.signature_help(path: path, line: 2, column: 26)
+      assert_equal "::String#start_with?", response[:signature_help][:signatures][0][:method]
+
+      content = Services::HoverProvider.content_for(service: provider.service, path: path, line: 2, column: 9)
+      assert_instance_of Services::HoverProvider::VariableContent, content
+      assert_equal :title, content.name
+      assert_equal "::String", content.type.to_s
+    end
+  end
 end

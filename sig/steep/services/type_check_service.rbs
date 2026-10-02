@@ -91,9 +91,9 @@ module Steep
 
       def update_sources: (changes: Server::ChangeBuffer::changes) -> void
 
-      def type_check_file: (target: Project::Target, subtyping: Subtyping::Check, path: Pathname, text: String) { () -> RBS::Resolver::ConstantResolver } -> SourceFile
+      def type_check_file: (target: Project::Target, subtyping: Subtyping::Check, path: Pathname, source_file: SourceFile) { () -> RBS::Resolver::ConstantResolver } -> SourceFile
 
-      def self.type_check: (source: Source, subtyping: Subtyping::Check, constant_resolver: RBS::Resolver::ConstantResolver, cursor: Integer?) -> Typing
+      def self.type_check: (source: Source, subtyping: Subtyping::Check, constant_resolver: RBS::Resolver::ConstantResolver, cursor: Integer?, ?local_variable_types: Hash[Symbol, AST::Types::t]) -> Typing
 
       # Returns `true` if the path is a source file to be type checked
       #

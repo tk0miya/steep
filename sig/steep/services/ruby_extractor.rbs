@@ -1,0 +1,87 @@
+module Steep
+  module Services
+    # Extracts the Ruby code embedded in a file, like ERB templates
+    #
+    # An extractor is chosen by the path of the file, and has no state.
+    # The extracted code keeps the positions of the characters in the file,
+    # so the diagnostics are reported on the original position.
+    #
+    module RubyExtractor
+      interface _Extractor
+        def extract: (String content) -> Result
+      end
+
+      # The Ruby code of a file, and the local variables defined outside of the code
+      #
+      class Result
+        attr_reader code: String
+
+        # Types of the local variables defined outside of the code
+        attr_reader locals: Hash[Symbol, RBS::Types::t]
+
+        def initialize: (code: String, locals: Hash[Symbol, RBS::Types::t]) -> void
+
+        def local_variable_types: (AST::Types::Factory factory) -> Hash[Symbol, AST::Types::t]
+      end
+
+      # Extracts the Ruby code from a `TypeCheckService::SourceFile`
+      def self.extract: (TypeCheckService::SourceFile source_file) -> Result
+
+      def self.for: (Pathname path) -> _Extractor
+
+      # Ruby files; the content is the Ruby code
+      class Plain
+        include _Extractor
+      end
+
+      # ERB files; the ERB tags are replaced with spaces
+      class Erb
+        include _Extractor
+
+        class Scanner
+          @scanner: StringScanner
+
+          @result: String
+
+          # Raises `EncodingError` if the content has invalid bytes
+          def self.extract: (String content) -> String
+
+          def initialize: (String content) -> void
+
+          def extract: () -> String
+
+          private
+
+          attr_reader scanner: StringScanner
+
+          def blank: (String text) -> void
+
+          def scan_tag: () -> void
+        end
+      end
+
+      # HTML+ERB files, like the views of Rails
+      #
+      # The HTML and the ERB tags are removed in the same way as `Erb`. The `locals` are declared in the same way as Rails, and the types are given by the next comment starting with `#:`.
+      #
+      class HtmlErb
+        include _Extractor
+
+        STRICT_LOCALS: Regexp
+
+        COMMENT_TAG: Regexp
+
+        TYPES_COMMENT: Regexp
+
+        private
+
+        def locals: (Array[Symbol] names, Hash[Symbol, RBS::Types::t] types) -> Hash[Symbol, RBS::Types::t]
+
+        # Returns `nil` if the declaration is not valid Ruby
+        def local_names: (String parameters) -> Array[Symbol]?
+
+        def local_types: (String comment) -> Hash[Symbol, RBS::Types::t]
+      end
+    end
+  end
+end

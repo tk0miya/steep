@@ -29,9 +29,18 @@ module Steep
       def string_value: (untyped token) -> untyped
     end
 
-    def self.new_parser: () -> Prism::Translation::Parser34
+    # Parser that knows the local variables defined outside of the source code
+    class LocalsAwareParser < Prism::Translation::Parser34
+      attr_reader locals: Array[Symbol]
 
-    def self.parse: (String source_code, path: Pathname, factory: AST::Types::Factory) -> Source
+      def initialize: (untyped builder, ?locals: Array[Symbol]) -> void
+    end
+
+    # `locals` are the names of the local variables defined outside of the source code
+    #
+    def self.new_parser: (?locals: Array[Symbol]) -> Prism::Translation::Parser34
+
+    def self.parse: (String source_code, path: Pathname, factory: AST::Types::Factory, ?locals: Array[Symbol]) -> Source
 
     def self.construct_mapping: (
       node: Parser::AST::Node,
