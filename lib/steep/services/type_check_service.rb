@@ -332,9 +332,10 @@ module Steep
       def type_check_file(target:, subtyping:, path:, source_file:)
         Steep.logger.tagged "#type_check_file(#{path}@#{target.name})" do
           extracted = RubyExtractor.extract(source_file)
-          local_variable_types = extracted.local_variable_types(subtyping.factory)
+          local_variable_types, locals_diagnostics = extracted.resolve_locals(subtyping)
           source = Source.parse(extracted.code, path: path, factory: subtyping.factory, locals: local_variable_types.keys)
           typing = TypeCheckService.type_check(source: source, subtyping: subtyping, constant_resolver: yield, cursor: nil, local_variable_types: local_variable_types)
+          locals_diagnostics.each { typing.add_error(_1) }
           ignores = Source::IgnoreRanges.new(ignores: source.ignores)
           SourceFile.with_typing(path: path, content: source_file.content, node: source.node, typing: typing, ignores: ignores)
         end

@@ -7,19 +7,55 @@ module Steep
     # so the diagnostics are reported on the original position.
     #
     module RubyExtractor
+      # An error in the declaration of the local variables, like a syntax error of the types
+      #
+      Error = _ = Data.define(:message, :location)
+
       # The Ruby code of a file, and the local variables defined outside of the code
       #
-      Result = _ = Data.define(:code, :locals) do
-        # Types of the locals; the names are resolved from the top level, and the type is `untyped` if a name is unknown
-        def local_variable_types(factory)
-          locals.transform_values do |type|
-            unknown = false
-            resolved = type.map_type_name do |name|
-              factory.absolute_type_name(name, context: nil) || (unknown = true; name)
+      Result = _ = Data.define(:code, :locals, :errors) do
+        def initialize(code:, locals: {}, errors: [])
+          super
+        end
+
+        # Types of the locals
+        #
+        # The names are resolved from the top level, and the type is `untyped` if it is invalid, like a type with an unknown name.
+        #
+        def local_variable_types(subtyping)
+          resolve_locals(subtyping)[0]
+        end
+
+        # Returns the types of the locals, and the diagnostics of the declaration of the locals
+        def resolve_locals(subtyping)
+          factory = subtyping.factory
+          resolver = RBS::Resolver::TypeNameResolver.build(factory.env)
+
+          diagnostics = errors.map do |error|
+            Diagnostic::Ruby::AnnotationSyntaxError.new(message: error.message, location: error.location)
+          end #: Array[Diagnostic::Ruby::Base]
+
+          types = locals.transform_values do |type|
+            resolved = type.map_type_name {|name| resolver.resolve(name, context: nil) || name.absolute! }
+
+            validator = Signature::Validator.new(checker: subtyping)
+            validator.rescue_validation_errors { validator.validate_type(resolved) }
+
+            validator.each_error do |error|
+              if location = error.location
+                diagnostics << Diagnostic::Ruby::RBSError.new(error: error, node: nil, location: location)
+              end
             end
 
-            unknown ? AST::Types::Any.instance : factory.type(resolved)
+            # Deprecated types are still valid
+            if validator.each_error.all? { _1.is_a?(Diagnostic::Signature::DeprecatedTypeName) }
+              factory.type(resolved)
+            else
+              AST::Types::Any.instance
+            end
           end
+
+          [types, diagnostics]
         end
       end
 

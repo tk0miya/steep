@@ -1081,8 +1081,53 @@ ERB
       ) {}
 
       hello = service.typecheck_source(path: Pathname("lib/hello.html.erb"), target: target) or raise
-      # The type is `untyped` if the name is unknown
-      assert_empty hello.diagnostics
+      # The type is `untyped` if the name is unknown, and the error is reported
+      assert_equal [Diagnostic::Ruby::RBSError], hello.diagnostics.map(&:class)
+
+      diagnostic = hello.diagnostics[0] or raise
+      assert_instance_of Diagnostic::Signature::UnknownTypeName, diagnostic.error
+      assert_equal [1, 32], [diagnostic.location.start_line, diagnostic.location.start_column]
+      assert_equal "Foo::Bar", diagnostic.location.source
+    end
+  end
+
+  def test_html_erb_locals__invalid_types
+    in_tmpdir do
+      service, target = html_erb_service("lib/hello.html.erb")
+      service.update(
+        changes: {
+          Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
+<%# locals: (title:) %>
+<%#: (title: String, icon: Symbol) %>
+<%= title.foo %>
+ERB
+        }
+      ) {}
+
+      hello = service.typecheck_source(path: Pathname("lib/hello.html.erb"), target: target) or raise
+      assert_equal [Diagnostic::Ruby::NoMethod, Diagnostic::Ruby::AnnotationSyntaxError], hello.diagnostics.map(&:class)
+
+      diagnostic = hello.diagnostics[1] or raise
+      assert_equal "Type annotation has a syntax error: `icon` is not declared in the locals", diagnostic.header_line
+      assert_equal [2, 27], [diagnostic.location.start_line, diagnostic.location.start_column]
+    end
+  end
+
+  def test_html_erb_locals__keyword_rest
+    in_tmpdir do
+      service, target = html_erb_service("lib/hello.html.erb")
+      service.update(
+        changes: {
+          Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
+<%# locals: (**attrs) %><%#: (**String) %>
+<%= attrs.fetch(:title).foo %>
+ERB
+        }
+      ) {}
+
+      hello = service.typecheck_source(path: Pathname("lib/hello.html.erb"), target: target) or raise
+      assert_equal [Diagnostic::Ruby::NoMethod], hello.diagnostics.map(&:class)
+      assert_match(/String/, hello.diagnostics[0].header_line)
     end
   end
 

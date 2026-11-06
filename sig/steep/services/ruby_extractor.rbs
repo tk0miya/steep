@@ -11,6 +11,16 @@ module Steep
         def extract: (String content) -> Result
       end
 
+      # An error in the declaration of the local variables, like a syntax error of the types
+      #
+      class Error
+        attr_reader message: String
+
+        attr_reader location: RBS::Location[untyped, untyped]
+
+        def initialize: (message: String, location: RBS::Location[untyped, untyped]) -> void
+      end
+
       # The Ruby code of a file, and the local variables defined outside of the code
       #
       class Result
@@ -19,9 +29,16 @@ module Steep
         # Types of the local variables defined outside of the code
         attr_reader locals: Hash[Symbol, RBS::Types::t]
 
-        def initialize: (code: String, locals: Hash[Symbol, RBS::Types::t]) -> void
+        # Errors in the declaration of the local variables
+        attr_reader errors: Array[Error]
 
-        def local_variable_types: (AST::Types::Factory factory) -> Hash[Symbol, AST::Types::t]
+        def initialize: (code: String, ?locals: Hash[Symbol, RBS::Types::t], ?errors: Array[Error]) -> void
+
+        # Types of the locals; the type is `untyped` if it is invalid
+        def local_variable_types: (Subtyping::Check subtyping) -> Hash[Symbol, AST::Types::t]
+
+        # Returns the types of the locals, and the diagnostics of the declaration of the locals
+        def resolve_locals: (Subtyping::Check subtyping) -> [Hash[Symbol, AST::Types::t], Array[Diagnostic::Ruby::Base]]
       end
 
       # Extracts the Ruby code from a `TypeCheckService::SourceFile`
@@ -77,10 +94,14 @@ module Steep
 
         def locals: (Array[Symbol] names, Hash[Symbol, RBS::Types::t] types) -> Hash[Symbol, RBS::Types::t]
 
-        # Returns `nil` if the declaration is not valid Ruby
-        def local_names: (String parameters) -> Array[Symbol]?
+        # Returns the names of the keywords and the keyword rest parameter, or `nil` if the declaration is not valid Ruby
+        #
+        # The name of the keyword rest parameter is `true` if it is anonymous, and `nil` if it is not declared.
+        #
+        def local_names: (String parameters) -> [Array[Symbol], Symbol | true | nil]?
 
-        def local_types: (String comment) -> Hash[Symbol, RBS::Types::t]
+        # Returns the types of the locals and the errors of the types given in `range` of `content`
+        def local_types: (String content, Range[Integer] range, Array[Symbol] keywords, Symbol | true | nil rest) -> [Hash[Symbol, RBS::Types::t], Array[Error]]
       end
     end
   end

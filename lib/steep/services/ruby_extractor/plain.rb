@@ -5,7 +5,7 @@ module Steep
       #
       class Plain
         def extract(content)
-          Result.new(code: content, locals: {})
+          Result.new(code: content)
         end
       end
     end

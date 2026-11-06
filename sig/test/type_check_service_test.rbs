@@ -87,6 +87,10 @@ class TypeCheckServiceTest < Minitest::Test
 
   def test_html_erb_locals__unknown_type_name: () -> untyped
 
+  def test_html_erb_locals__invalid_types: () -> untyped
+
+  def test_html_erb_locals__keyword_rest: () -> untyped
+
   def test_html_erb_locals__type_var_annotation_takes_precedence: () -> untyped
 
   def test_html_erb__diagnostic_position: () -> untyped

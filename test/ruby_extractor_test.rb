@@ -160,11 +160,62 @@ class RubyExtractorTest < Minitest::Test
   end
 
   def test_html_erb__invalid_types
-    # The locals are untyped if the types are invalid
-    extracted = RubyExtractor::HtmlErb.new.extract("<%# locals: (title:) %><%#: (title: ) %>\n<%= title %>\n")
+    # The locals are untyped if the types are invalid, and the error is reported
+    extracted = RubyExtractor::HtmlErb.new.extract("<%# locals: (title:) %>\n<%#: (title: ) %>\n<%= title %>\n")
 
     assert_equal [:title], extracted.locals.keys
     assert_equal ["untyped"], extracted.locals.values.map(&:to_s)
+
+    assert_equal 1, extracted.errors.size
+    extracted.errors[0].tap do |error|
+      assert_match(/Syntax error/, error.message)
+      assert_equal [2, 13], [error.location.start_line, error.location.start_column]
+      assert_equal ")", error.location.source
+    end
+  end
+
+  def test_html_erb__locals_keyword_rest_type
+    extracted = RubyExtractor::HtmlErb.new.extract("<%# locals: (title:, **attrs) %><%#: (title: String, **Integer) %>\n")
+
+    assert_equal({ title: "String", attrs: "::Hash[::Symbol, Integer]" }, extracted.locals.transform_values(&:to_s))
+    assert_empty extracted.errors
+  end
+
+  def test_html_erb__locals_anonymous_keyword_rest
+    # The anonymous keyword rest parameter defines no local variable
+    extracted = RubyExtractor::HtmlErb.new.extract("<%# locals: (title:, **) %><%#: (title: String, **Integer) %>\n")
+
+    assert_equal({ title: "String" }, extracted.locals.transform_values(&:to_s))
+    assert_empty extracted.errors
+  end
+
+  def test_html_erb__types_with_positional_params
+    extracted = RubyExtractor::HtmlErb.new.extract("<%# locals: (title:) %><%#: (String, ?Integer, *Symbol) %>\n")
+
+    assert_equal ["untyped"], extracted.locals.values.map(&:to_s)
+    assert_equal ["String", "Integer", "Symbol"], extracted.errors.map { _1.location.source }
+    assert_equal ["The types of the locals must be keyword parameters"], extracted.errors.map(&:message).uniq
+  end
+
+  def test_html_erb__types_with_untyped_params
+    extracted = RubyExtractor::HtmlErb.new.extract("<%# locals: (title:) %><%#: (?) %>\n")
+
+    assert_equal ["untyped"], extracted.locals.values.map(&:to_s)
+    assert_equal ["The types of the locals must be keyword parameters"], extracted.errors.map(&:message)
+    assert_equal ["(?)"], extracted.errors.map { _1.location.source }
+  end
+
+  def test_html_erb__types_of_undeclared_locals
+    extracted = RubyExtractor::HtmlErb.new.extract("<p>日本語</p><%# locals: (title:) %>\n<%#: (title: String, icon: Symbol, **Integer) %>\n")
+
+    assert_equal({ title: "String" }, extracted.locals.transform_values(&:to_s))
+    assert_equal(
+      [
+        ["`icon` is not declared in the locals", 2, 27, "Symbol"],
+        ["The keyword rest parameter is not declared in the locals", 2, 37, "Integer"]
+      ],
+      extracted.errors.map { [_1.message, _1.location.start_line, _1.location.start_column, _1.location.source] }
+    )
   end
 
   def test_html_erb__invalid_locals

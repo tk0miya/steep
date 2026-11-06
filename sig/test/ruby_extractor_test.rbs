@@ -45,6 +45,16 @@ class RubyExtractorTest < Minitest::Test
 
   def test_html_erb__invalid_types: () -> untyped
 
+  def test_html_erb__locals_keyword_rest_type: () -> untyped
+
+  def test_html_erb__locals_anonymous_keyword_rest: () -> untyped
+
+  def test_html_erb__types_with_positional_params: () -> untyped
+
+  def test_html_erb__types_with_untyped_params: () -> untyped
+
+  def test_html_erb__types_of_undeclared_locals: () -> untyped
+
   def test_html_erb__invalid_locals: () -> untyped
 
   def test_html_erb__types_requires_hash_colon: () -> untyped

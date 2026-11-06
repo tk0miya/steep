@@ -142,7 +142,7 @@ module Steep
                 source_text: extracted.code,
                 path: relative_path,
                 subtyping: subtyping,
-                local_variable_types: extracted.local_variable_types(subtyping.factory)
+                local_variable_types: extracted.local_variable_types(subtyping)
               )
 
               if (prefix_size, items = provider.run_at_comment(line: line, column: column))
@@ -255,7 +255,7 @@ module Steep
             file = service.source_files[relative_path] or return
             subtyping = service.signature_services.fetch(target.name).current_subtyping or return
             extracted = Services::RubyExtractor.extract(file)
-            local_variable_types = extracted.local_variable_types(subtyping.factory)
+            local_variable_types = extracted.local_variable_types(subtyping)
             source =
               Source.parse(extracted.code, path: file.path, factory: subtyping.factory, locals: local_variable_types.keys)
                 .without_unrelated_defs(line: line, column: column)

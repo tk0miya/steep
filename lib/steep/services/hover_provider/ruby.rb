@@ -33,7 +33,7 @@ module Steep
         def typecheck(target, path:, file:, line:, column:)
           subtyping = service.signature_services.fetch(target.name).current_subtyping or return
           extracted = RubyExtractor.extract(file)
-          local_variable_types = extracted.local_variable_types(subtyping.factory)
+          local_variable_types = extracted.local_variable_types(subtyping)
           source = Source.parse(extracted.code, path: path, factory: subtyping.factory, locals: local_variable_types.keys)
           source = source.without_unrelated_defs(line: line, column: column)
           resolver = ::RBS::Resolver::ConstantResolver.new(builder: subtyping.factory.definition_builder)

@@ -11,7 +11,7 @@ module Steep
       #
       class Erb
         def extract(content)
-          Result.new(code: Scanner.extract(content), locals: {})
+          Result.new(code: Scanner.extract(content))
         end
 
         class Scanner
