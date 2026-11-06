@@ -6,4 +6,6 @@ class PatternTest < Minitest::Test
   def test_pattern: () -> untyped
 
   def test_pattern_with_glob: () -> untyped
+
+  def test_pattern_with_multiple_exts: () -> untyped
 end

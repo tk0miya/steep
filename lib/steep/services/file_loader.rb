@@ -44,9 +44,9 @@ module Steep
                   yield relative_path
                 end
               else
-                files = Pathname(absolute_path).glob("**/*#{pattern.ext}")
+                files = pattern.exts.flat_map {|ext| Pathname(absolute_path).glob("**/*#{ext}") }
 
-                files.sort.each do |source_path|
+                files.sort.uniq.each do |source_path|
                   if source_path.file?
                     relative_path = source_path.relative_path_from(base_dir)
                     unless pattern.ignore?(relative_path)

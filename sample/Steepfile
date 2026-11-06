@@ -22,5 +22,10 @@ end
 
 # target :templates do
 #   check "lib/templates"                       # Directory name
-#   ext ".erb"
+#   ext ".erb"                                  # Type check `*.erb` instead of `*.rb`
+# end
+
+# target :tasks do
+#   check "lib/tasks"
+#   ext ".rb", ".rake"                          # Multiple extensions
 # end

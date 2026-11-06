@@ -63,4 +63,36 @@ class FileLoaderTest < Minitest::Test
       assert_equal [Pathname("lib/foo/bar/baz.rb")], loader.each_path_in_patterns(pat, []).to_a
     end
   end
+
+  def test_each_path_in_patterns_with_custom_ext
+    in_tmpdir do
+      loader = FileLoader.new(base_dir: current_dir)
+
+      (current_dir + "app/views/users").mkpath()
+      (current_dir + "app/views/users/index.html.erb").write("")
+      (current_dir + "app/views/users/helper.rb").write("")
+      (current_dir + "app/views/layout.erb").write("")
+
+      pat = Pattern.new(patterns: ["app/views"], ext: ".erb")
+
+      assert_equal [Pathname("app/views/layout.erb"), Pathname("app/views/users/index.html.erb")], loader.each_path_in_patterns(pat).to_a
+      assert_equal [Pathname("app/views/users/index.html.erb")], loader.each_path_in_patterns(pat, ["app/views/users"]).to_a
+      assert_empty loader.each_path_in_patterns(pat, ["app/views/users/helper.rb"]).to_a
+    end
+  end
+
+  def test_each_path_in_patterns_with_multiple_exts
+    in_tmpdir do
+      loader = FileLoader.new(base_dir: current_dir)
+
+      (current_dir + "lib/tasks").mkpath()
+      (current_dir + "lib/foo.rb").write("")
+      (current_dir + "lib/tasks/foo.rake").write("")
+      (current_dir + "lib/foo.erb").write("")
+
+      pat = Pattern.new(patterns: ["lib"], ext: [".rb", ".rake"])
+
+      assert_equal [Pathname("lib/foo.rb"), Pathname("lib/tasks/foo.rake")], loader.each_path_in_patterns(pat).to_a
+    end
+  end
 end

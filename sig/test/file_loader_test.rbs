@@ -18,4 +18,8 @@ class FileLoaderTest < Minitest::Test
   def test_each_path_in_patterns_with_glob: () -> untyped
 
   def test_each_path_in_patterns_with_glob_and_ext: () -> untyped
+
+  def test_each_path_in_patterns_with_custom_ext: () -> untyped
+
+  def test_each_path_in_patterns_with_multiple_exts: () -> untyped
 end

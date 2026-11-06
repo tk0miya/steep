@@ -27,9 +27,10 @@ module Steep
       # Negative *dir name* pattern constructed from `#ignores`, which is tested with `start_with?`
       attr_reader ignore_prefixes: Array[String]
 
-      attr_reader ext: String
+      # File extensions of the files matched by the *dir name* patterns, like `.rb` or `.html.erb`
+      attr_reader exts: Array[String]
 
-      def initialize: (patterns: Array[String], ext: String, ?ignores: Array[String]) -> void
+      def initialize: (patterns: Array[String], ext: String | Array[String], ?ignores: Array[String]) -> void
 
       # Returns `true` if given path matches to *positive* pattern, but doesn't match to *negative* pattern
       #

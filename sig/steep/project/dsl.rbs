@@ -63,11 +63,23 @@ module Steep
 
         attr_reader ignored_signatures: Array[String]
 
-        @ext: String?
+        @source_exts: Array[String]?
 
         def check: (*String args, ?inline: bool) -> void
 
-        def ext: (String ext) -> void
+        # Set the extensions of the source files to type check, instead of `.rb`
+        #
+        # ```rb
+        # ext ".rb", ".rake"
+        # ```
+        #
+        # A leading `.` can be omitted. The extensions of a target are inherited by its groups.
+        # It doesn't apply to the inline sources.
+        #
+        def ext: (*String exts) -> void
+
+        # The extensions of the source files to type check
+        def source_exts: () -> Array[String]
 
         def ignore: (*String args, ?inline: bool) -> void
 
@@ -158,6 +170,9 @@ module Steep
         attr_reader name: Symbol
 
         attr_reader target: TargetDSL
+
+        # Returns the extensions given by `ext` in the group, or the extensions of the target
+        def source_exts: () -> Array[String]
 
         # Configuration of Ruby code diagnostics
         #

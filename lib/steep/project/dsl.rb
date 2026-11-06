@@ -78,8 +78,23 @@ module Steep
           end
         end
 
-        def ext(ext)
-          @ext = ext
+        def ext(*exts)
+          if exts.empty?
+            raise ArgumentError, "`ext` requires at least one extension"
+          end
+
+          @source_exts = exts.map do |ext|
+            ext = ext.to_str
+            if ext.empty? || ext == "." || ext.include?(File::SEPARATOR) || ext.match?(/[*?\[\]{}]/)
+              raise ArgumentError, "Invalid extension for `ext`: #{ext.inspect}"
+            end
+
+            ext.start_with?(".") ? ext : ".#{ext}"
+          end
+        end
+
+        def source_exts
+          @source_exts || [".rb"]
         end
 
         def ignore(*args, inline: false)
@@ -123,7 +138,7 @@ module Steep
         end
 
         def source_pattern
-          Pattern.new(patterns: sources, ignores: ignored_sources, ext: @ext || ".rb")
+          Pattern.new(patterns: sources, ignores: ignored_sources, ext: source_exts)
         end
 
         def signature_pattern
@@ -131,6 +146,7 @@ module Steep
         end
 
         def inline_source_pattern
+          # Inline RBS is written in Ruby files, so `ext` doesn't apply to inline sources
           Pattern.new(patterns: inline_sources, ignores: ignored_inline_sources, ext: ".rb")
         end
       end
@@ -163,6 +179,7 @@ module Steep
           @signatures = other.signatures.dup
           @ignored_sources = other.ignored_sources.dup
           @ignored_signatures = other.ignored_signatures.dup
+          @source_exts = other.source_exts.dup
           @repo_paths = other.repo_paths.dup
           @core_root = other.core_root
           @stdlib_root = other.stdlib_root
@@ -218,6 +235,11 @@ module Steep
         def initialize(name, target)
           @name = name
           @target = target
+        end
+
+        # Groups inherit the extensions of the target unless `ext` is given in the group
+        def source_exts
+          @source_exts || target.source_exts
         end
 
         def configure_code_diagnostics(config = nil)

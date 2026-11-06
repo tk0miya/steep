@@ -23,4 +23,16 @@ class PatternTest < Minitest::Test
     assert_operator pattern, :=~, "app/models/foo/bar/baz.rb"
     assert_operator pattern, :=~, "app/models/foo/bar/baz/qux.rb"
   end
+
+  def test_pattern_with_multiple_exts
+    pattern = Project::Pattern.new(
+      patterns: ["lib"],
+      ext: [".rb", ".rake"]
+    )
+
+    assert_equal [".rb", ".rake"], pattern.exts
+    assert_operator pattern, :=~, "lib/foo.rb"
+    assert_operator pattern, :=~, "lib/tasks/foo.rake"
+    refute_operator pattern, :=~, "lib/foo.erb"
+  end
 end

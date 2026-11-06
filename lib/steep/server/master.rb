@@ -1786,11 +1786,11 @@ module Steep
         patterns = [] #: Array[String]
 
         project.targets.each do |target|
-          patterns.concat(paths_to_watch(target.source_pattern, extname: target.source_pattern.ext))
-          patterns.concat(paths_to_watch(target.signature_pattern, extname: ".rbs"))
+          patterns.concat(paths_to_watch(target.source_pattern))
+          patterns.concat(paths_to_watch(target.signature_pattern))
           target.groups.each do |group|
-            patterns.concat(paths_to_watch(group.source_pattern, extname: group.source_pattern.ext))
-            patterns.concat(paths_to_watch(group.signature_pattern, extname: ".rbs"))
+            patterns.concat(paths_to_watch(group.source_pattern))
+            patterns.concat(paths_to_watch(group.signature_pattern))
           end
         end
         patterns.sort!
@@ -1819,7 +1819,7 @@ module Steep
         )
       end
 
-      def paths_to_watch(pattern, extname:)
+      def paths_to_watch(pattern)
         result = [] #: Array[String]
 
         pattern.patterns.each do |pat|
@@ -1828,7 +1828,11 @@ module Steep
         end
         pattern.prefixes.each do |pat|
           path = project.base_dir + pat
-          result << (path + "**/*#{extname}").to_s unless path.file?
+          unless path.file?
+            pattern.exts.each do |ext|
+              result << (path + "**/*#{ext}").to_s
+            end
+          end
         end
 
         result

@@ -564,7 +564,7 @@ module Steep
 
       private def setup_file_system_watcher: () -> void
 
-      private def paths_to_watch: (Project::Pattern, extname: String) -> Array[String]
+      private def paths_to_watch: (Project::Pattern) -> Array[String]
     end
   end
 end

@@ -123,6 +123,8 @@ class MasterTest < Minitest::Test
 
   def test__initialize__file_system_watcher_setup: () -> untyped
 
+  def test__initialize__file_system_watcher_setup_with_ext: () -> untyped
+
   def test_index_on_initialize: () -> untyped
 
   def test_index_changed_signatures_after_type_check: () -> untyped

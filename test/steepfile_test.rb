@@ -377,8 +377,111 @@ EOF
         assert_instance_of Project::Target, target
 
         assert_equal ["app/views"], target.source_pattern.patterns
-        assert_equal ".erb", target.source_pattern.ext
+        assert_equal [".erb"], target.source_pattern.exts
         assert_equal ["sig"], target.signature_pattern.patterns
+        assert_equal [".rb"], target.inline_source_pattern.exts
+
+        assert_equal target, target.possible_source_file?(Pathname("app/views/index.html.erb"))
+        assert_nil target.possible_source_file?(Pathname("app/views/helper.rb"))
+      end
+    end
+  end
+
+  def test_ext_default
+    in_tmpdir do
+      project = Project.new(steepfile_path: current_dir + "Steepfile")
+
+      Project::DSL.parse(project, <<EOF)
+target :app do
+  check "app"
+end
+EOF
+
+      project.targets.find {|target| target.name == :app }.tap do |target|
+        assert_equal [".rb"], target.source_pattern.exts
+      end
+    end
+  end
+
+  def test_ext_multiple
+    in_tmpdir do
+      project = Project.new(steepfile_path: current_dir + "Steepfile")
+
+      Project::DSL.parse(project, <<EOF)
+target :lib do
+  check "lib"
+  ext ".rb", "rake"
+end
+EOF
+
+      project.targets.find {|target| target.name == :lib }.tap do |target|
+        assert_equal [".rb", ".rake"], target.source_pattern.exts
+
+        assert_equal target, target.possible_source_file?(Pathname("lib/foo.rb"))
+        assert_equal target, target.possible_source_file?(Pathname("lib/tasks/foo.rake"))
+        assert_nil target.possible_source_file?(Pathname("lib/foo.erb"))
+      end
+    end
+  end
+
+  def test_ext_invalid
+    in_tmpdir do
+      ["", ".", "*.rb", "{.rb,.rake}", "foo/.rb"].each do |ext|
+        project = Project.new(steepfile_path: current_dir + "Steepfile")
+
+        assert_raises ArgumentError do
+          Project::DSL.parse(project, <<EOF)
+target :lib do
+  check "lib"
+  ext #{ext.inspect}
+end
+EOF
+        end
+      end
+
+      project = Project.new(steepfile_path: current_dir + "Steepfile")
+      assert_raises ArgumentError do
+        Project::DSL.parse(project, <<EOF)
+target :lib do
+  check "lib"
+  ext
+end
+EOF
+      end
+    end
+  end
+
+  def test_ext_group
+    in_tmpdir do
+      project = Project.new(steepfile_path: current_dir + "Steepfile")
+
+      Project::DSL.parse(project, <<EOF)
+target :views do
+  check "app/views"
+
+  group :admin do
+    check "app/views/admin"
+  end
+
+  group :mailer do
+    check "app/views/mailer"
+    ext ".text.erb"
+  end
+
+  ext ".erb"
+end
+EOF
+
+      project.targets.find {|target| target.name == :views }.tap do |target|
+        admin = target.groups.find { _1.name == :admin } or raise
+        mailer = target.groups.find { _1.name == :mailer } or raise
+
+        assert_equal [".erb"], admin.source_pattern.exts
+        assert_equal [".text.erb"], mailer.source_pattern.exts
+
+        assert_equal admin, target.possible_source_file?(Pathname("app/views/admin/index.html.erb"))
+        assert_equal mailer, target.possible_source_file?(Pathname("app/views/mailer/welcome.text.erb"))
+        assert_equal target, target.possible_source_file?(Pathname("app/views/mailer/welcome.html.erb"))
       end
     end
   end

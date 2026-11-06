@@ -38,4 +38,14 @@ class SteepfileTest < Minitest::Test
   def test_group: () -> untyped
 
   def test_string: () -> untyped
+
+  def test_ext: () -> untyped
+
+  def test_ext_default: () -> untyped
+
+  def test_ext_multiple: () -> untyped
+
+  def test_ext_invalid: () -> untyped
+
+  def test_ext_group: () -> untyped
 end
