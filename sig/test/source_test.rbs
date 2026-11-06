@@ -88,4 +88,6 @@ class SourceTest < Minitest::Test
   def test_find_comment: () -> untyped
 
   def test_annotation_attached_to_block: () -> untyped
+
+  def test_parse__locals: () -> untyped
 end

@@ -29,11 +29,18 @@ module Steep
       def string_value: (untyped token) -> untyped
     end
 
-    # Parser that knows the local variables defined outside of the source code
-    class LocalsAwareParser < Prism::Translation::Parser34
+    # Parses the code with Prism, letting it know the local variables defined outside of the code
+    #
+    # It is given to `Prism::Translation::Parser` through the `parser:` keyword.
+    #
+    class PrismWithLocals
       attr_reader locals: Array[Symbol]
 
-      def initialize: (untyped builder, ?locals: Array[Symbol]) -> void
+      def initialize: (Array[Symbol] locals) -> void
+
+      def parse: (String source, **untyped options) -> Prism::ParseResult
+
+      def parse_lex: (String source, **untyped options) -> Prism::ParseLexResult
     end
 
     # `locals` are the names of the local variables defined outside of the source code

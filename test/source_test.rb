@@ -1041,4 +1041,17 @@ super { } # $ nil
       end
     end
   end
+
+  def test_parse__locals
+    with_factory do |factory|
+      Steep::Source.parse("title", path: Pathname("foo.rb"), factory: factory).tap do |source|
+        assert_equal :send, source.node.type
+      end
+
+      Steep::Source.parse("title", path: Pathname("foo.rb"), factory: factory, locals: [:title]).tap do |source|
+        assert_equal :lvar, source.node.type
+        assert_equal :title, source.node.children[0]
+      end
+    end
+  end
 end

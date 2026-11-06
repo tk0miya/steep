@@ -30,24 +30,30 @@ module Steep
       self.emit_forward_arg = true
     end
 
-    # Parser that knows the local variables defined outside of the source code
-    class LocalsAwareParser < Prism::Translation::Parser34
+    # Parses the code with Prism, letting it know the local variables defined outside of the code
+    #
+    # It is given to `Prism::Translation::Parser` through the `parser:` keyword.
+    #
+    class PrismWithLocals
       attr_reader :locals
 
-      def initialize(builder, locals: [])
-        super(builder)
+      def initialize(locals)
         @locals = locals
       end
 
-      def prism_options
-        options = super
-        options[:scopes] = [locals] unless locals.empty?
-        options
+      def parse(source, **options)
+        Prism.parse(source, **options, scopes: [locals])
+      end
+
+      def parse_lex(source, **options)
+        Prism.parse_lex(source, **options, scopes: [locals])
       end
     end
 
     def self.new_parser(locals: [])
-      LocalsAwareParser.new(Builder.new, locals: locals).tap do |parser|
+      prism = locals.empty? ? Prism : PrismWithLocals.new(locals)
+
+      Prism::Translation::Parser34.new(Builder.new, parser: prism).tap do |parser|
         parser.diagnostics.all_errors_are_fatal = true
         parser.diagnostics.ignore_warnings = true
       end

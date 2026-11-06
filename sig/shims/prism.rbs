@@ -16,16 +16,14 @@ module Prism
     end
 
     class Parser34 < Parser
-      def initialize: (Parser::Builders::Default builder) -> void
+      # `parser` is an object that responds to `parse` and `parse_lex` like `Prism`
+      def initialize: (Parser::Builders::Default builder, ?parser: untyped) -> void
 
       def parse: (Parser::Source::Buffer) -> Parser::AST::Node
 
       def parse_with_comments: (Parser::Source::Buffer) -> [Parser::AST::Node, Array[Parser::Source::Comment]]
 
       attr_reader diagnostics: untyped
-
-      # Options for `Prism.parse`
-      def prism_options: () -> Hash[Symbol, untyped]
     end
   end
 end
