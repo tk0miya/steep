@@ -997,7 +997,7 @@ RUBY
     end
   end
 
-  def test_html_erb_locals__type_check
+  def test_erb_locals__type_check
     in_tmpdir do
       project = Project.new(steepfile_path: current_dir + "Steepfile")
       Project::DSL.parse(project, <<~RUBY)
@@ -1011,7 +1011,7 @@ RUBY
       service.update(
         changes: {
           Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
-<%# locals: (title:, icon: nil) %><%#: (title: String, icon: String?) %>
+<%# @type locals: (title: String, ?icon: String?) %>
 <h1><%= title + 1 %></h1>
 <%= icon.upcase %>
 ERB
@@ -1041,7 +1041,7 @@ ERB
     [Services::TypeCheckService.new(project: project), project.targets.first || raise]
   end
 
-  def test_html_erb_locals__namespaced_type
+  def test_erb_locals__namespaced_type
     in_tmpdir do
       (current_dir + "sig").mkpath
       (current_dir + "sig/foo.rbs").write(<<~RBS)
@@ -1057,7 +1057,7 @@ ERB
         changes: {
           Pathname("sig/foo.rbs") => [ContentChange.string((current_dir + "sig/foo.rbs").read)],
           Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
-<%# locals: (bar:) %><%#: (bar: Foo::Bar) %>
+<%# @type locals: (bar: Foo::Bar) %>
 <%= bar.size.upcase %>
 ERB
         }
@@ -1068,13 +1068,13 @@ ERB
     end
   end
 
-  def test_html_erb_locals__unknown_type_name
+  def test_erb_locals__unknown_type_name
     in_tmpdir do
       service, target = html_erb_service("lib/hello.html.erb")
       service.update(
         changes: {
           Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
-<%# locals: (bar:) %><%#: (bar: Foo::Bar) %>
+<%# @type locals: (bar: Foo::Bar) %>
 <%= bar.size %>
 ERB
         }
@@ -1086,19 +1086,19 @@ ERB
 
       diagnostic = hello.diagnostics[0] or raise
       assert_instance_of Diagnostic::Signature::UnknownTypeName, diagnostic.error
-      assert_equal [1, 32], [diagnostic.location.start_line, diagnostic.location.start_column]
+      assert_equal [1, 24], [diagnostic.location.start_line, diagnostic.location.start_column]
       assert_equal "Foo::Bar", diagnostic.location.source
     end
   end
 
-  def test_html_erb_locals__invalid_types
+  def test_erb_locals__not_keywords
     in_tmpdir do
       service, target = html_erb_service("lib/hello.html.erb")
       service.update(
         changes: {
           Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
-<%# locals: (title:) %>
-<%#: (title: String, icon: Symbol) %>
+<p>日本語</p>
+<%# @type locals: (title: String, **Symbol) %>
 <%= title.foo %>
 ERB
         }
@@ -1108,36 +1108,19 @@ ERB
       assert_equal [Diagnostic::Ruby::NoMethod, Diagnostic::Ruby::AnnotationSyntaxError], hello.diagnostics.map(&:class)
 
       diagnostic = hello.diagnostics[1] or raise
-      assert_equal "Type annotation has a syntax error: `icon` is not declared in the locals", diagnostic.header_line
-      assert_equal [2, 27], [diagnostic.location.start_line, diagnostic.location.start_column]
+      assert_equal "Type annotation has a syntax error: The locals must be keyword parameters", diagnostic.header_line
+      assert_equal [2, 36], [diagnostic.location.start_line, diagnostic.location.start_column]
+      assert_equal "Symbol", diagnostic.location.source
     end
   end
 
-  def test_html_erb_locals__keyword_rest
+  def test_erb_locals__type_var_annotation_takes_precedence
     in_tmpdir do
       service, target = html_erb_service("lib/hello.html.erb")
       service.update(
         changes: {
           Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
-<%# locals: (**attrs) %><%#: (**String) %>
-<%= attrs.fetch(:title).foo %>
-ERB
-        }
-      ) {}
-
-      hello = service.typecheck_source(path: Pathname("lib/hello.html.erb"), target: target) or raise
-      assert_equal [Diagnostic::Ruby::NoMethod], hello.diagnostics.map(&:class)
-      assert_match(/String/, hello.diagnostics[0].header_line)
-    end
-  end
-
-  def test_html_erb_locals__type_var_annotation_takes_precedence
-    in_tmpdir do
-      service, target = html_erb_service("lib/hello.html.erb")
-      service.update(
-        changes: {
-          Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
-<%# locals: (title:) %><%#: (title: String) %>
+<%# @type locals: (title: String) %>
 <% # @type var title: Integer %>
 <%= title + 1 %>
 <%= title.upcase %>

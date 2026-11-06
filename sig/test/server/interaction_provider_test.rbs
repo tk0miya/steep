@@ -39,5 +39,5 @@ class Steep::Server::InteractionProviderTest < Minitest::Test
 
   def test_signature_help__syntax_error: () -> untyped
 
-  def test_html_erb_locals__signature_help_and_hover: () -> untyped
+  def test_erb_locals__signature_help_and_hover: () -> untyped
 end

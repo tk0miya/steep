@@ -52,8 +52,23 @@ module Steep
       end
 
       # ERB files; the ERB tags are replaced with spaces
+      #
+      # The local variables given to the template are declared with a comment tag:
+      #
+      #     <%# @type locals: (title: String, ?icon: String?) %>
+      #
       class Erb
         include _Extractor
+
+        # A comment tag, `<%# comment %>` or `<% # comment %>`
+        COMMENT_TAG: Regexp
+
+        LOCALS_ANNOTATION: Regexp
+
+        private
+
+        # Returns the types of the locals and the errors of the types given in `range` of `content`
+        def local_types: (String content, Range[Integer] range) -> [Hash[Symbol, RBS::Types::t], Array[Error]]
 
         class Scanner
           @scanner: StringScanner
@@ -75,33 +90,6 @@ module Steep
 
           def scan_tag: () -> void
         end
-      end
-
-      # HTML+ERB files, like the views of Rails
-      #
-      # The HTML and the ERB tags are removed in the same way as `Erb`. The `locals` are declared in the same way as Rails, and the types are given by the next comment starting with `#:`.
-      #
-      class HtmlErb
-        include _Extractor
-
-        STRICT_LOCALS: Regexp
-
-        COMMENT_TAG: Regexp
-
-        TYPES_COMMENT: Regexp
-
-        private
-
-        def locals: (Array[Symbol] names, Hash[Symbol, RBS::Types::t] types) -> Hash[Symbol, RBS::Types::t]
-
-        # Returns the names of the keywords and the keyword rest parameter, or `nil` if the declaration is not valid Ruby
-        #
-        # The name of the keyword rest parameter is `true` if it is anonymous, and `nil` if it is not declared.
-        #
-        def local_names: (String parameters) -> [Array[Symbol], Symbol | true | nil]?
-
-        # Returns the types of the locals and the errors of the types given in `range` of `content`
-        def local_types: (String content, Range[Integer] range, Array[Symbol] keywords, Symbol | true | nil rest) -> [Hash[Symbol, RBS::Types::t], Array[Error]]
       end
     end
   end

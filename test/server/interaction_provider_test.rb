@@ -546,7 +546,7 @@ RUBY
     end
   end
 
-  def test_html_erb_locals__signature_help_and_hover
+  def test_erb_locals__signature_help_and_hover
     in_tmpdir do
       project = Project.new(steepfile_path: current_dir + "Steepfile")
       Project::DSL.parse(project, <<~RUBY)
@@ -560,7 +560,7 @@ RUBY
       provider.service.update(
         changes: {
           Pathname("lib/hello.html.erb") => [ContentChange.string(<<ERB)],
-<%# locals: (title:) %><%#: (title: String) %>
+<%# @type locals: (title: String) %>
 <h1><%= title.start_with?("a") %></h1>
 ERB
         }

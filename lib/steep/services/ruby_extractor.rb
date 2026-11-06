@@ -65,10 +65,7 @@ module Steep
       end
 
       def self.for(path)
-        case
-        when path.to_s.end_with?(".html.erb")
-          HtmlErb.new
-        when path.extname == ".erb"
+        if path.extname == ".erb"
           Erb.new
         else
           Plain.new

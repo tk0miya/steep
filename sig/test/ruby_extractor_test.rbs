@@ -27,55 +27,27 @@ class RubyExtractorTest < Minitest::Test
 
   def test_erb__multibyte: () -> untyped
 
-  def test_html_erb__code: () -> untyped
+  def test_erb__html_code: () -> untyped
 
-  def test_html_erb__multibyte_keeps_separators: () -> untyped
+  def test_erb__multibyte_keeps_separators: () -> untyped
 
-  def test_html_erb__locals: () -> untyped
+  def test_erb__locals: () -> untyped
 
-  def test_html_erb__locals_in_nested_tag: () -> untyped
+  def test_erb__no_locals: () -> untyped
 
-  def test_html_erb__no_locals: () -> untyped
+  def test_erb__locals_empty: () -> untyped
 
-  def test_html_erb__locals_without_types: () -> untyped
+  def test_erb__locals_ruby_comment: () -> untyped
 
-  def test_html_erb__locals_partially_typed: () -> untyped
+  def test_erb__locals_boundaries: () -> untyped
 
-  def test_html_erb__locals_keyword_rest: () -> untyped
+  def test_erb__locals_multiline: () -> untyped
 
-  def test_html_erb__invalid_types: () -> untyped
+  def test_erb__locals_syntax_error: () -> untyped
 
-  def test_html_erb__locals_keyword_rest_type: () -> untyped
+  def test_erb__locals_not_keywords: () -> untyped
 
-  def test_html_erb__locals_anonymous_keyword_rest: () -> untyped
-
-  def test_html_erb__types_with_positional_params: () -> untyped
-
-  def test_html_erb__types_with_untyped_params: () -> untyped
-
-  def test_html_erb__types_of_undeclared_locals: () -> untyped
-
-  def test_html_erb__invalid_locals: () -> untyped
-
-  def test_html_erb__types_requires_hash_colon: () -> untyped
-
-  def test_html_erb__ruby_comment: () -> untyped
-
-  def test_html_erb__locals_in_nested_html: () -> untyped
-
-  def test_html_erb__multiline_declaration_is_removed: () -> untyped
-
-  def test_html_erb__requires_space: () -> untyped
-
-  def test_html_erb__locals_boundaries: () -> untyped
-
-  def test_html_erb__types_comment_boundaries: () -> untyped
-
-  def test_html_erb__types_comment_is_the_next_comment: () -> untyped
-
-  def test_html_erb__declaration_is_removed_from_the_code: () -> untyped
-
-  def test_html_erb__first_locals: () -> untyped
+  def test_erb__locals_declared_twice: () -> untyped
 
   def test_extract: () -> untyped
 end
